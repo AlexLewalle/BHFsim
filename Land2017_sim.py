@@ -17,7 +17,7 @@ PSet = {}
 
 class Land2017:
 
-    AllParams = ('a', 'b', 'k', 'eta_l', 'eta_s', 'k_trpn', 'ntrpn', 'Ca50ref', 'ku', 'nTm', 'trpn50', 'kuw', 'kws', 'rw', 'rs', 'gs','gw', 'phi', 'Aeff','beta0', 'beta1', 'Tref', 'kue','keu','kforce')
+    AllParams = ('a', 'b', 'k', 'eta_l', 'eta_s', 'k_trpn', 'ntrpn', 'Ca50ref', 'ku', 'nTm', 'trpn50', 'kuw', 'kws', 'rw', 'rs', 'gs','gw', 'phi', 'Aeff','beta0', 'beta1', 'Tref', 'k2','k1','kforce')
     
     # Passive tension parameters
     a = 2.1e3  # Pa
@@ -45,8 +45,8 @@ class Land2017:
     beta1 = -2.4
     Tref = 40.5e3  # Pa
     
-    kue = 0 # 200 # s-1    (<-- k2 in Campbell2020; rate constant from unattached "ON" state to "OFF" state.)
-    keu = 2 # s-1      (<-- k1 in Campbell2020; rate constant from "OFF" state to unattacherd "ON" state.)
+    k2 = 0 # 200 # s-1    (<-- k2 in Campbell2020; rate constant from unattached "ON" state to "OFF" state.)
+    k1 = 2 # s-1      (<-- k1 in Campbell2020; rate constant from "OFF" state to unattacherd "ON" state.)
     kforce = 0 #1.74e-4 # Pa-1    # value missing in Campbell2020 !! This is the value from Campbell2018 for rat.
 
     Cai =  10**(-4) # M
@@ -102,25 +102,25 @@ class Land2017:
         return np.maximum(0, hh(np.minimum(Lambda,1.2)))
 
     def Ta(self, Y):
-        CaTRPN, B, S, W , Zs, Zw, Lambda, Cd, E = Y.transpose()
+        CaTRPN, B, S, W , Zs, Zw, Lambda, Cd, BE, UE = Y.transpose()
         return self.h(Lambda)* self.Tref/self.rs * (S*(Zs+1) + W*Zw)
     
     def Ta_S(self, Y):
-        CaTRPN, B, S, W , Zs, Zw, Lambda, Cd, E = Y.transpose()
+        CaTRPN, B, S, W , Zs, Zw, Lambda, Cd, BE, UE = Y.transpose()
         return self.h(Lambda)* self.Tref/self.rs * (S*(Zs+1) )
     
     def Ta_W(self, Y):
-        CaTRPN, B, S, W , Zs, Zw, Lambda, Cd, E = Y.transpose()
+        CaTRPN, B, S, W , Zs, Zw, Lambda, Cd, BE, UE = Y.transpose()
         return self.h(Lambda)* self.Tref/self.rs * ( W*Zw)
     
 
     def F1(self, Y):
-        CaTRPN, B, S, W , Zs, Zw, Lambda, Cd, E = Y.transpose()
+        CaTRPN, B, S, W , Zs, Zw, Lambda, Cd, BE, UE = Y.transpose()
         C = Lambda-1
         return self.a*(np.exp(self.b*C)-1) 
 
     def F2(self, Y):
-        CaTRPN, B, S, W , Zs, Zw, Lambda, Cd, E = Y.transpose()
+        CaTRPN, B, S, W , Zs, Zw, Lambda, Cd, BE, UE = Y.transpose()
         return self.a*self.k*(Lambda-1 - Cd)
     
     def Ttotal(self, Y):
@@ -141,20 +141,46 @@ class Land2017:
         Lambda_ss = self.Lambda_ext
         Cd_ss = Lambda_ss - 1        
         CaTRPN_ss = ((self.Cai/self.Ca50(Lambda_ss))**-self.ntrpn + 1)**-1
-        U_ss = (1 \
-                + self.kb/self.ku*CaTRPN_ss**-self.nTm \
-                + self.kws*self.kuw/(self.ksu*(self.kwu+self.kws)) \
-                + self.kuw/(self.kwu+self.kws) \
-                + self.kue/self.keu \
-                )**-1 
-        W_ss = self.kuw/(self.kwu+self.kws)*U_ss
-        S_ss = self.kws/self.ksu * W_ss
-        # B_ss = U_ss/(1-self.rs-(1-self.rs)*self.rw)
-        B_ss = self.kb/self.ku * CaTRPN_ss**-self.nTm * U_ss
-        E_ss = self.kue/self.keu * U_ss
+        # U_ss = (1 \
+        #         + self.kb/self.ku*CaTRPN_ss**-self.nTm \
+        #         + self.kws*self.kuw/(self.ksu*(self.kwu+self.kws)) \
+        #         + self.kuw/(self.kwu+self.kws) \
+        #         + self.k2/self.k1 \
+        #         )**-1 
+        # W_ss = self.kuw/(self.kwu+self.kws)*U_ss
+        # S_ss = self.kws/self.ksu * W_ss
+        # # B_ss = U_ss/(1-self.rs-(1-self.rs)*self.rw)
+        # B_ss = self.kb/self.ku * CaTRPN_ss**-self.nTm * U_ss
+        # E_ss = self.k2/self.k1 * U_ss
         Zw_ss = 0
         Zs_ss = 0
-        Y_ss = np.array((CaTRPN_ss, B_ss, S_ss, W_ss , Zs_ss, Zw_ss, Lambda_ss, Cd_ss, E_ss))
+
+        """
+        Calculate steady-state probabilities for all the states
+        """
+        Mat = np.zeros( (6,6) )
+        #         U  B  S  W  BE  UE              
+        Mat[0] = [1, 1, 1, 1, 1,  1]
+        Mat[1,0] = self.kb*CaTRPN_ss**(-self.nTm/2)
+        Mat[1,1] = -self.ku*CaTRPN_ss**-(self.nTm/2) - self.k2
+        Mat[1,4] = self.k1 
+        Mat[2,3] = self.kws
+        Mat[2,2] = -self.ksu
+        Mat[3,0] = self.kuw
+        Mat[3,3] = -self.kwu - self.kws
+        Mat[4,5] = self.kb*CaTRPN_ss**(-self.nTm/2)
+        Mat[4,4] = -self.ku*CaTRPN_ss**-(self.nTm/2) - self.k1
+        Mat[4,1] = self.k2 
+        Mat[5,5] = -self.kb*CaTRPN_ss**(-self.nTm/2) - self.k1
+        Mat[5,4] = self.ku*CaTRPN_ss**(self.nTm/2)
+        Mat[5,0] = self.k2
+        U_ss, B_ss, S_ss, W_ss, BE_ss, UE_ss =  np.dot(  np.linalg.inv(Mat),  np.array([1,0,0,0,0,0]).T  )
+        
+        
+        
+        
+        
+        Y_ss = np.array((CaTRPN_ss, B_ss, S_ss, W_ss , Zs_ss, Zw_ss, Lambda_ss, Cd_ss, BE_ss, UE_ss))
         
         return Y_ss
 
@@ -162,8 +188,8 @@ class Land2017:
 
 
     def dYdt(self, Y, t):
-        CaTRPN, B, S, W, Zs, Zw, Lambda, Cd, E = Y
-        U = 1-B-S-W  -E
+        CaTRPN, B, S, W, Zs, Zw, Lambda, Cd, BE, UE = Y
+        U = 1-B-S-W  -BE-UE
         
         gwu = self.gw * abs(Zw)      # eq. 15
         if Zs+1 < 0:        # eq. 17
@@ -179,11 +205,25 @@ class Land2017:
         dZsdt = self.As*self.dLambdadt_fun(t) - cs*Zs
         dCaTRPNdt = self.k_trpn*((self.Cai/self.Ca50(Lambda))**self.ntrpn*(1-CaTRPN)-CaTRPN)     # eq. 9
         # kb = self.ku * self.trpn50**self.nTm/ (1 - self.rs - (1-self.rs)*self.rw)     # eq. 25
-        dBdt = self.kb*CaTRPN**(-self.nTm/2)*U - self.ku*CaTRPN**(self.nTm/2)*B     # eq. 10
+        dBdt = self.kb*CaTRPN**(-self.nTm/2)*U  \
+            - self.ku*CaTRPN**(self.nTm/2)*B  \
+            - self.k2*B   \
+            + self.k1*(1+self.kforce*self.Ttotal(Y)) * BE  # eq.10 in Land2017, amended to include myosin off state dynamics 
         dWdt = self.kuw*U -self.kwu*W - self.kws*W - gwu*W     # eq. 12
         dSdt = self.kws*W - self.ksu*S - gsu*S        # eq. 13
 
-        dEdt = self.kue*U - self.keu*(1+self.kforce*self.Ttotal(Y))*E       # additional factor (1+kforce*Ftotal) to be included; but kforce is missing in Campbell 2020
+
+        # New "myosin off" states        
+        dBEdt = self.kb*CaTRPN**(-self.nTm/2)*UE  \
+            - self.ku*CaTRPN**(self.nTm/2)*BE  \
+            + self.k2*B \
+            - self.k1*(1+self.kforce*self.Ttotal(Y)) * BE 
+        dUEdt = -self.kb*CaTRPN**(-self.nTm/2)*UE  \
+            + self.ku*CaTRPN**(self.nTm/2)*BE  \
+            + self.k2*U \
+            - self.k1*(1+self.kforce*self.Ttotal(Y)) * UE 
+            
+            
         
         dLambdadt = self.dLambdadt_fun(t)    # Allow this function to be defined within particular experiments
         if Lambda-1-Cd > 0 :     # i.e., dCd/dt>0    (from eq. 5)
@@ -191,7 +231,7 @@ class Land2017:
         else:
             dCddt = self.k/self.eta_s * (Lambda-1-Cd)     # eq. 5
             
-        return (dCaTRPNdt, dBdt, dSdt, dWdt, dZsdt, dZwdt, dLambdadt, dCddt, dEdt)    
+        return (dCaTRPNdt, dBdt, dSdt, dWdt, dZsdt, dZwdt, dLambdadt, dCddt, dBEdt, dUEdt)    
     
     def dYdt_pas(self, Y, t):
         CaTRPN, B, S, W , Zs, Zw, Lambda, Cd, E = Y
@@ -215,11 +255,11 @@ class Land2017:
 
     def QuickStretchActiveResponse(self, dLambda, t):
         self.dLambdadt_fun = lambda t: 0
-        CaTRPN_0, B_0, S_0, W_0 , Zs_0, Zw_0, Lambda_0, Cd_0, E_0 = self.Get_ss()
+        CaTRPN_0, B_0, S_0, W_0 , Zs_0, Zw_0, Lambda_0, Cd_0, BE_0, UE_0 = self.Get_ss()
         Zs_0 = Zs_0 + self.As*dLambda         
         Zw_0 = Zw_0 + self.Aw*dLambda
         self.Lambda_ext = Lambda_0 + dLambda
-        Y0 = [CaTRPN_0, B_0, S_0, W_0 , Zs_0, Zw_0, Lambda_0+dLambda, Cd_0, E_0]
+        Y0 = [CaTRPN_0, B_0, S_0, W_0 , Zs_0, Zw_0, Lambda_0+dLambda, Cd_0, BE_0, UE_0]
         Ysol1 = odeint(self.dYdt, Y0, t)
         # Ysol1 = solve_ivp(self.dYdt, [t[0], t[-1]], Y0, t_eval=t)
         return Ysol1
