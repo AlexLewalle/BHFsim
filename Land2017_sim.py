@@ -45,7 +45,7 @@ class Land2017:
     beta1 = -2.4
     Tref = 40.5e3  # Pa
     
-    k2 = 0 # 200 # s-1    (<-- k2 in Campbell2020; rate constant from unattached "ON" state to "OFF" state.)
+    k2 = 200 # s-1    (<-- k2 in Campbell2020; rate constant from unattached "ON" state to "OFF" state.)
     k1 = 2 # s-1      (<-- k1 in Campbell2020; rate constant from "OFF" state to unattacherd "ON" state.)
     kforce = 0 #1.74e-4 # Pa-1    # value missing in Campbell2020 !! This is the value from Campbell2018 for rat.
 
@@ -59,9 +59,9 @@ class Land2017:
     As = Aw 		# eq. 26
 
     L0 = 1.9    
-    dLambda_ext = 0.1
-    Lambda_ext = 1
-    dLambdadt_fun = None   # This gets specified by particular experiments
+    dLambda_ext = 0.1       # To be specified by the experiment
+    Lambda_ext = 1          # To be specified by the experiment
+    dLambdadt_fun = None    # This gets specified by particular experiments
 
     def __init__(self, *args, **kwargs):
         """
@@ -162,14 +162,14 @@ class Land2017:
         #         U  B  S  W  BE  UE              
         Mat[0] = [1, 1, 1, 1, 1,  1]
         Mat[1,0] = self.kb*CaTRPN_ss**(-self.nTm/2)
-        Mat[1,1] = -self.ku*CaTRPN_ss**-(self.nTm/2) - self.k2
+        Mat[1,1] = -self.ku*CaTRPN_ss**(self.nTm/2) - self.k2
         Mat[1,4] = self.k1 
         Mat[2,3] = self.kws
         Mat[2,2] = -self.ksu
         Mat[3,0] = self.kuw
         Mat[3,3] = -self.kwu - self.kws
         Mat[4,5] = self.kb*CaTRPN_ss**(-self.nTm/2)
-        Mat[4,4] = -self.ku*CaTRPN_ss**-(self.nTm/2) - self.k1
+        Mat[4,4] = -self.ku*CaTRPN_ss**(self.nTm/2) - self.k1
         Mat[4,1] = self.k2 
         Mat[5,5] = -self.kb*CaTRPN_ss**(-self.nTm/2) - self.k1
         Mat[5,4] = self.ku*CaTRPN_ss**(self.nTm/2)
@@ -234,7 +234,7 @@ class Land2017:
         return (dCaTRPNdt, dBdt, dSdt, dWdt, dZsdt, dZwdt, dLambdadt, dCddt, dBEdt, dUEdt)    
     
     def dYdt_pas(self, Y, t):
-        CaTRPN, B, S, W , Zs, Zw, Lambda, Cd, E = Y
+        CaTRPN, B, S, W , Zs, Zw, Lambda, Cd, BE, UE = Y
 
         dZwdt = 0
         dZsdt = 0
@@ -243,7 +243,8 @@ class Land2017:
         dBdt = 0
         dWdt = 0
         dSdt = 0
-        dEdt = 0
+        dBEdt = 0
+        dUEdt = 0
         
         dLambdadt = self.dLambdadt_fun(t)    # Allow this function to be defined within particular experiments
         if Lambda-1-Cd > 0 :     # i.e., dCd/dt>0    (from eq. 5)
@@ -251,14 +252,37 @@ class Land2017:
         else:
             dCddt = self.k/self.eta_s * (Lambda-1-Cd)     # eq. 5
             
-        return (dCaTRPNdt, dBdt, dSdt, dWdt, dZsdt, dZwdt, dLambdadt, dCddt, dEdt)    
+        return (dCaTRPNdt, dBdt, dSdt, dWdt, dZsdt, dZwdt, dLambdadt, dCddt, dBEdt, dUEdt)    
+
+    def CaiStepResponse(self, Cai1, Cai2, t):
+        """
+        Starting from the steady state, change Cai from Cai1 to Cai2. Lambda is fixed at
+        Lambda_ext (specified previously). 
+        The initial state Y0 that is input into the ODE solver assumes that the Cai step occurs instantaneously.
+        """
+        self.dLambdadt_fun = lambda t: 0
+        self.Cai = Cai1
+        CaTRPN_0, B_0, S_0, W_0 , Zs_0, Zw_0, Lambda_0, Cd_0, BE_0, UE_0 = self.Get_ss()
+        Y0 = [CaTRPN_0, B_0, S_0, W_0 , Zs_0, Zw_0, Lambda_0, Cd_0, BE_0, UE_0]
+        self.Cai = Cai2
+        Ysol1 = odeint(self.dYdt, Y0, t)
+        # Ysol1 = solve_ivp(self.dYdt, [t[0], t[-1]], Y0, t_eval=t)
+        return Ysol1
 
     def QuickStretchActiveResponse(self, dLambda, t):
+        """
+        Starting from the steady state, increase Lambda by dLambda. The initial Lambda is 
+        given by Lambda_ext (specified previously) **before** the stretch is performed. 
+        Then, this Lambda_ext is **updated**.
+        The initial state Y0 that is input into the ODE solver assumes that the step change occurs
+        instantaneously, so that only Lambda_0 (and Zs_0 and Zw_0, which are dependent on Lambda_0) 
+        are altered.
+        """
         self.dLambdadt_fun = lambda t: 0
         CaTRPN_0, B_0, S_0, W_0 , Zs_0, Zw_0, Lambda_0, Cd_0, BE_0, UE_0 = self.Get_ss()
         Zs_0 = Zs_0 + self.As*dLambda         
         Zw_0 = Zw_0 + self.Aw*dLambda
-        self.Lambda_ext = Lambda_0 + dLambda
+        self.Lambda_ext = Lambda_0 + dLambda    # <----- update Lambda_ext
         Y0 = [CaTRPN_0, B_0, S_0, W_0 , Zs_0, Zw_0, Lambda_0+dLambda, Cd_0, BE_0, UE_0]
         Ysol1 = odeint(self.dYdt, Y0, t)
         # Ysol1 = solve_ivp(self.dYdt, [t[0], t[-1]], Y0, t_eval=t)
@@ -276,16 +300,57 @@ class Land2017:
         Cd_0 = Lambda_0 - 1        
         Zs_0 = 0 
         Zw_0 = 0 
-        E_0 = 0
+        BE_0 = 0
+        UE_0 = 0
         self.Lambda_ext = Lambda_0 + dLambda
-        Y0 = [CaTRPN_0, B_0, S_0, W_0 , Zs_0, Zw_0, Lambda_0+dLambda, Cd_0, E_0]
+        Y0 = [CaTRPN_0, B_0, S_0, W_0 , Zs_0, Zw_0, Lambda_0+dLambda, Cd_0, BE_0, UE_0]
         Ysol1 = odeint(self.dYdt_pas, Y0, t)
         # Ysol1 = solve_ivp(self.dYdt, [t[0], t[-1]], Y0, t_eval=t)
         return Ysol1
 
         
-
+    def GetCaiStepFeatures(self, F,t):
+        """
+        Get scalar features of a Cai step change experiment
     
+        Parameters
+        ----------
+        F : Cai step response
+        t : time
+        """
+        
+        # exp_fun = lambda t, a, b, c : a*np.exp(-b*t) + c
+        # Fit0, covFit = scipy.optimize.curve_fit(exp_fun, t, F[0], p0=[F[0][0]-F[0][-1]])
+        
+        fit_fun = lambda t, a,b,c,d : 1 / (1/(a*t**2) + 1/(b-c*np.exp(-d*t)) )
+        # fit_fun = lambda t, a : 1 / (1/(a[0]*t**2) + 1/(a[1]-a[2]*np.exp(-a[3]*t)) ) + a[4]
+        Fit0, covFit = scipy.optimize.curve_fit(fit_fun, t, F-F[0], 
+                                                [1., 1., 1., 1.]) 
+        a,b,c,d = Fit0
+        plt.figure(num = 'Fit test')
+        plt.plot(t,F)
+        plt.plot(t, F[0]+ fit_fun(t, a,b,c,d), 'k--')
+        plt.show()
+        
+        # Fdec0 = (F[0][0]-F[0][-1])*(1-frac_dec)  + F[0][-1]
+        # tdec0 = [t1 for it, t1 in enumerate(t) if F[0][it]>Fdec0][-1]
+        # Fdec1 = (F[1][0]-F[1][-1])*(1-frac_dec)  + F[1][-1]
+        # tdec1 = [t1 for it, t1 in enumerate(t) if F[1][it]<Fdec1][-1]
+        
+        
+        
+        return {}
+    # 'Fss' : F0[0],
+    #             'dFss' : F0[1]/F0[0] ,
+    #             'rFpeak': max(F[0])/F0[0], 
+    #             'drFpeak': (max(F[0])-min(F[1])) / F0[0],
+    #             'tdecay': tdec0,
+    #             'dtdecay': tdec1/tdec0
+    #             #'Fmin': F[0][jmin] if jmin>jmax else None, 
+    #             #'Fmintime': t[jmin]  if jmin>jmax else None,
+    #             }
+    
+
     def GetQuickStretchFeatures(self, F,t, F0):
         """
         Get scalar features of a single quick-stretch experiment
@@ -293,13 +358,20 @@ class Land2017:
         Parameters
         ----------
         F : list of two quick-stretch responses, corresponding to stretch and release
+        t : time
+        F0 : list of two steady state forces
         """
         
+        # exp_fun = lambda t, a, b, c : a*np.exp(-b*t) + c
+        
+        # Fit0, covFit = scipy.optimize.curve_fit(exp_fun, t, F[0], p0=[F[0][0]-F[0][-1]])
         frac_dec = 0.7
         Fdec0 = (F[0][0]-F[0][-1])*(1-frac_dec)  + F[0][-1]
         tdec0 = [t1 for it, t1 in enumerate(t) if F[0][it]>Fdec0][-1]
         Fdec1 = (F[1][0]-F[1][-1])*(1-frac_dec)  + F[1][-1]
         tdec1 = [t1 for it, t1 in enumerate(t) if F[1][it]<Fdec1][-1]
+        
+        
         
         return {'Fss' : F0[0],
                 'dFss' : F0[1]/F0[0] ,
@@ -310,11 +382,7 @@ class Land2017:
                 #'Fmin': F[0][jmin] if jmin>jmax else None, 
                 #'Fmintime': t[jmin]  if jmin>jmax else None,
                 }
-        
-        # return {'Fpeak': max(F[0]), 
-        #         'Fmin': min(F[0]), 
-        #         'Fmintime': t[np.argmin(F[0])] 
-        #         }
+
         
     def GetQuickStretchPassiveFeatures(self, F, t, F0):
         exp_fun = lambda t, a, b, c : a*np.exp(-b*t) + c
@@ -381,6 +449,73 @@ def PlotS1(gsa, Feature):
     figS1.suptitle(Feature)
     axS1[0].set_xticklabels(gsa.ylabels, rotation=45); axS1[0].set_title('S1')
     axS1[1].set_xticklabels(gsa.ylabels, rotation=45); axS1[0].set_title('Stotal')
+
+
+def DoCaiStep(PSet, Cai1=10**-4, Cai2=10**-4, L0=1.9, ifPlot = False):
+    print(f'Stepping Cai={Cai1} to {Cai2} (L0={L0})')
+    text1=f'Stepping Cai={Cai1} to {Cai2} (L0={L0})'
+    if ifPlot:
+        fig1, ax1 = plt.subplots(nrows=4, num=f'Stepping pCai={-np.log10(Cai1)} to {-np.log10(Cai2)} (L0={L0})', figsize=(21, 7))
+        fig2, ax2 = plt.subplots(nrows=7, num=f'States (L0={L0}, pCai={-np.log10(Cai1)} to {-np.log10(Cai2)})', figsize=(7,10))
+    
+    Features_a = {}   # initialise features dictionary
+    for iPSet, PSet1 in enumerate(PSet):
+        Model = Land2017(PSet1)
+        Model.Cai = Cai1
+        Model.L0 = L0
+        t = np.linspace(0, 1, 1000)
+        Ysol = None; F0 = [None]*2; F0_S = [None]*2; F0_W = [None]*2; F0_pas = [None]*2; F = [None]*2; F_S = [None]*2; F_W = [None]*2; F_pas = [None]*2
+        
+        F0 = Model.Ttotal(Model.Get_ss())
+        F0_S = Model.Ta_S(Model.Get_ss())
+        F0_W = Model.Ta_W(Model.Get_ss())
+        F0_pas = Model.F1(Model.Get_ss()) + Model.F2(Model.Get_ss())
+        Ysol = Model.CaiStepResponse(Cai1, Cai2, t)
+        """
+        Ysol is  a 2-by-1000-by-8 array containing the ODE solutions for the quick stretch and the quick contraction steps, as functions of time.
+        State variables are :  CaTRPN, B, S, W , Zs, Zw, Lambda, Cd, E
+        """
+        F = Model.Ttotal(Ysol)
+        F_S = Model.Ta_S(Ysol)
+        F_W = Model.Ta_W(Ysol)
+        F_pas = Model.F1(Ysol) + Model.F2(Ysol)
+        
+
+        
+        # features = Model.GetCaiStepFeatures(F,t)
+        # for feat1 in features.keys():
+        #     if not feat1 in Features_a:
+        #         Features_a[feat1] = [None]*len(PSet)
+        #     Features_a[feat1][iPSet] = features[feat1]
+        
+        
+        if ifPlot:
+            normF = 1 #F0[0]
+            ax1[0].plot(np.append( [-t[-1]/20, 0], t), np.append([F0, F0], F)/normF); ax1[0].set_ylabel('F_total'); 
+            ax1[1].plot(np.append( [-t[-1]/20, 0], t), np.append([F0_S, F0_S], F_S)/normF); ax1[1].set_ylabel('F_S')
+            ax1[2].plot(np.append( [-t[-1]/20, 0], t), np.append([F0_W, F0_W], F_W)/normF); ax1[2].set_ylabel('F_W')
+            ax1[3].plot(np.append( [-t[-1]/20, 0], t), np.append([F0_pas, F0_pas], F_pas)/normF); ax1[3].set_ylabel('F_passive')
+
+            # fig1.suptitle(f'L0={Model.L0}, Cai={Model.Cai}')
+            
+            # No need to plot CaTRPN (i.e. Ysol[0][:,0]) since no dynamics.
+            ax2[0].plot(t, Ysol[:,1]); ax2[0].set_ylabel('B')
+            ax2[1].plot(t, Ysol[:,2]); ax2[1].set_ylabel('S')
+            ax2[2].plot(t, Ysol[:,3]); ax2[2].set_ylabel('W')
+            ax2[3].plot(t, np.ones(len(Ysol))-(Ysol[:,1]+Ysol[:,2]+Ysol[:,3])); ax2[3].set_ylabel('U')
+            ax2[4].plot(t, Ysol[:,4]); ax2[4].set_ylabel('Zs')
+            ax2[5].plot(t, Ysol[:,5]); ax2[5].set_ylabel('Zw')
+            ax2[6].plot(t, Ysol[:,7]); ax2[6].set_ylabel('Cd')
+
+            
+    plt.show()
+    return Features_a
+    # return {'Fbase': Fbase_a,
+    #         'Fpeak': Fpeak_a,
+    #         'Fmin': Fmin_a, 
+    #         'Fmintime': Fmintime_a,
+    #         'DFssrel': DFssrel_a
+    #         }
     
 
 def DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = False):
@@ -425,6 +560,7 @@ def DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = False):
             if ifPlot: 
                 plt.figure(5); plt.plot(t, Ysol[i1][:,7], label=f'{iPSet}')
                 plt.legend()
+                plt.show()
 
         
         features = Model.GetQuickStretchFeatures(F,t, F0)
@@ -603,7 +739,7 @@ def DoQuickStretches_passive(PSet, L0=1.9, ifPlot = False):
 
 
 
-def DoFpCa(PSet, ifPlot = False):
+def DoFpCa(PSet, Lambda0 = 1., ifPlot = False):
     if ifPlot:
         figFpCa = plt.figure(num='F-pCa', figsize=(7,7))
         ax_FpCa = figFpCa.add_subplot(2,1,1)
@@ -615,16 +751,10 @@ def DoFpCa(PSet, ifPlot = False):
     nH_a = [None]*len(PSet)
     EC50_a = [None]*len(PSet)
 
-    # for i1 in range(0,len(PSet)):
-    #     Model = Land2017(PSet[i1])
-    #     Fmax, nH, EC50 = Model.Get_FpCa(Model.Lambda0, FpCaPlotAxis=ax_FpCa)
-    #     Fmax_a[i1]=Fmax
-    #     nH_a[i1]=nH
-    #     EC50_a[i1]=EC50
-
     Cai_array = 10**np.linspace(-9, -4, 100)
     for i1, PSet1 in enumerate(PSet):
         Model = Land2017(PSet1)
+        Model.Lambda_ext = Lambda0
         F_array = [None]*len(Cai_array)
 
         
@@ -640,9 +770,10 @@ def DoFpCa(PSet, ifPlot = False):
         EC50_a[i1] = HillParams[2]
             
         if ifPlot:
-            ax_FpCa.plot(Cai_array, F_array)
+            ax_FpCa.semilogx(Cai_array, F_array)
             ax_FpCa.set_xlabel('Cai (M)')
-            ax_FpCa.set_ylabel('F')    
+            ax_FpCa.set_ylabel('F')
+            ax_FpCa.set_title(f'F-pCa, Lambda={Lambda0}')
         
     if ifPlot:
         bins = 10
@@ -804,12 +935,14 @@ if __name__ == '__main__':
 
     Nsamples = 10
     print('Doing LH sampling')
-    PSet = MakeParamSetLH(Model0, Nsamples,  'AllParams') #'eta_l', 'eta_s', 'k_trpn', 'ku', 'kuw', 'kws') # 
+    PSet = MakeParamSetLH(Model0, Nsamples, 'kforce') #'AllParams') #
     print('LH sampling completed')
     
-    DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = True)    
+    # DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = True)    
+    DoCaiStep(PSet, Cai1=10**-6, Cai2=10**-3, ifPlot=True)
     # DoQuickStretches_passive(PSet, L0=1.9, ifPlot = True)
-    # DoFpCa(PSet, ifPlot = True)
+    # DoFpCa(PSet, Lambda0=1., ifPlot = True)
+    
     # DoChirps(PSet, ifPlot = True)
     # DoDynamic(PSet, ifPlot = True)
 
