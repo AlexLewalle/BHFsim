@@ -9,6 +9,10 @@ Created on Tue Dec  7 15:42:23 2021
 import numpy as np
 from matplotlib import pyplot as plt
 
+xmin = -10.; xmax = 10.; dx=0.5;
+xMFG = np.arange(xmin, xmax+dx, dx)  # nm
+xps = 5 # nm   power stroke
+
 class Campbell2020:
     N0 =  6.9e16 #/m2   # number of myosin heads in a hypothetical cardiac half sarcomere - see eq. 8
     
@@ -25,15 +29,14 @@ class Campbell2020:
     xps = 5 # nm
     kfalloff = 0.0024 #nm-1
     sigma = 500 # N m-2
-    L = 80 # nm
-    Lslack = 900 # nm
+    L = 80 # nm            parameter in Fpassive; not the sarcomere length!
+    Lslack = 900 # nm      half-sarcomere length for which passive force = 0
     kforce = 1.74e-4 # N-1m2   (borrowed from Campbell2018 for the rat! Human value not specified in Campbell2020 Table S1!)
+    
+    
     
     kB = 1.38e-23 # J K-1
     T = 298 # K
-    xmin = -10 # nm
-    xmax = 10 # nm
-    dx = 0.5 #nm
 
     lthin = 1120 # nm   from Campbell2009 eq3
     lthick = 815 # nm   from Campbell2009 eq3
@@ -41,7 +44,7 @@ class Campbell2020:
     lambdafalloff = 0.005 # nm-1      from Campbell2009 eq3
     
     
-    
+    Lambda_ext = 0
 
     def Noverlap(self, xhs):
         """
@@ -66,35 +69,47 @@ class Campbell2020:
     def dYdt(self, Y, t):
         Noff, Non, MOFF, MON, *MFG = Y
         
-        xhs = 1000
+        Lambda_ext = 1
+        xhs = 1000 * Lambda_ext # nm
 
         Nbound = sum(MFG)        
         
-        Jon = self.kon * self.Cai * (self.Noverlap(xhs)(xhs)-Non) * (1 + self.kcoop*(Non/self.Noverlap(xhs)))           #eq S1
+        Jon = self.kon * self.Cai * (self.Noverlap(xhs)-Non) * (1 + self.kcoop*(Non/self.Noverlap(xhs)))           #eq S1
         Joff = self.koff(Non-Nbound)*(1+self.kcoop*(self.Noverlap(xhs)-Non)/self.Noverlap(xhs))               #eq S2
-        J1 = self.k1 * (1+self.kforce*Ftotal)*MOFF                               #eq S3
+        J1 = self.k1 * (1+self.kforce*self.Ftotal(Y))*MOFF                               #eq S3
         J2 = self.k2 * MON                                                           #eq S4
-        def J3(self, x):
-            return self.k3 * np.exp(-self.kcb*x^2/2/self.kB/self.T) * MON * (Non-Nbound)            #eq S5
-        def J4(self, x):
-            return (k40 + k41*(x-xps)^4) * MFG(x)                                #eq S6
+        
+        # J3 and J4 are arrays, for elements in xMFG
+        J3 = self.k3 * np.exp(-self.kcb*xMFG^2/2/self.kB/self.T) * MON * (Non-Nbound)            #eq S5
+        J4 = (self.k40 + self.k41*(xMFG-xps)^4) * MFG                                #eq S6
     
     
         # State variable ODEs                   eq S7
         dNoffdt = -Jon + Joff
         dNondt = Jon - Joff
         dMOFFdt = -J1 + J2
-        dMONdt = J1 - J2 + sum([J4(xi)-J3(xi) for xi in np.arange(xmin, xmax+dx, dx)])
-        dMFGdt = [J3(xi)-J4(xi) for xi in np.arange(xmin, xmax+dx, dx)]      # <---- make sure this works!
+        dMONdt = J1 - J2 + sum(J4-J3)
+        dMFGdt = J3-J4 
         
         return (dNoffdt, dNondt, dMOFFdt, dMONdt, dMFGdt)
 
+    def Get_ss1(self, Y0=[1.,0.,0.,0.]+[0.]*len(xMFG) ):
+        
+        
 
     def Factive(self, Y):
         Noff, Non, MOFF, MON, *MFG = Y
-        return self.N0*self.kcb * sum([MFG])
+        return self.N0*self.kcb * sum(np.array(MFG)*(xMFG + xps))
     
+    def Fpassive(self, Y):
+        Noff, Non, MOFF, MON, *MFG = Y
+        return self.sigma * (np.exp((self.xhs-self.Lslack)/self.L)-1)     # eq. S9 of Campbell2020
     
+    def Ftotal(self, Y):
+        return self.Factive(Y) + self.Fpassive(Y)
+    
+    def QuickStretchResponse(self, dL, t):
+        pass
     
 if __name__ == "__main__":
     M1 = Campbell2020()
