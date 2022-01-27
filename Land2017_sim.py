@@ -403,7 +403,7 @@ class Land2017:
                 'tdec_pas1': 1/Fit1[1]}
 
 
-    def SinResponse(self, freq, numcycles=30, pointspercycle=1000, dLambda_amplitude=0.1, ifPlot=False):
+    def SinResponse(self, freq, numcycles=10, pointspercycle=1000, dLambda_amplitude=0.1, ifPlot=False):
         # numcycles = 30
         # pointspercycle = 1000
         # dLambda_amplitude = 0.1
@@ -413,24 +413,24 @@ class Land2017:
         t = np.linspace(0, numcycles/freq, numcycles*pointspercycle)
         Y_ss0 = self.Get_ss()
         Ysol = odeint(self.dYdt, Y_ss0, t)
-        # Ysol = ode15s(self.dYdt, Y_ss0, t)
         Tasol = self.Ta(Ysol)
 
-        def Sin_fun(x, *a):
-            return a[0]*np.sin(2*np.pi*freq*x + a[1]) + a[2]
+        def Sin_fun(t, *a):
+            return a[0]*np.sin(2*np.pi*freq*(t + a[1])) + a[2]
         SinFit, cov = curve_fit(Sin_fun,
                                 t[-pointspercycle:], Tasol[-pointspercycle:],
                                 p0=(
                                     (max(Tasol[-pointspercycle:])-min(Tasol[-pointspercycle:]))/2,
-                                    (1/freq/4 - np.argmax(Tasol[-pointspercycle:])/pointspercycle/freq  )*2*np.pi*freq ,
+                                    1/freq/4 - np.argmax(Tasol[-pointspercycle:])/pointspercycle/freq  ,
                                     np.mean(Tasol[-pointspercycle:]) ) )
 
         Stiffness = SinFit[0]/dLambda_amplitude
-        DphaseTa = SinFit[1]
+        DphaseTa = SinFit[1]*2*np.pi*freq
 
         if ifPlot:
             fig_sol, ax_sol = plt.subplots(nrows=2)
-            ax_sol[0].plot(t, Tasol); ax_sol[0].set_ylabel('Ta')
+            ax_sol[0].plot(t, Tasol);
+            ax_sol[0].plot(t, Sin_fun(t, *SinFit), 'k--'); ax_sol[0].set_ylabel('Ta')
             ax_sol[1].plot(t, Ysol[:,6]); ax_sol[1].set_ylabel('Lambda')
             fig_sol.suptitle(f'f = {freq}')
             plt.show()
@@ -852,16 +852,17 @@ def DoChirps(PSet, ifPlot = False):
 
     if ifPlot: axsol[1].plot(t, Ysol[:, 6])
 
-def DoDynamic(PSet, fmin=0.01, fmax=3000, Numf=100, ifPlot = False):
+
+def DoDynamic(PSet, fmin=1, fmax=100, Numf=10, ifPlot = False):
 
     f_list = np.logspace(np.log10(fmin), np.log10(fmax), Numf)
 
-    if ifPlot: figsol, axsol = plt.subplots(nrows=2, ncols=1, num='Dynamic solutions')
+    # if ifPlot: figsol, axsol = plt.subplots(nrows=2, ncols=1, num='Dynamic solutions')
     fig, ax = plt.subplots(ncols=3, nrows=1, num = 'Dynamic experiments', figsize = (15,7))
 
     for i1, PSet1 in enumerate(PSet):
         print(f'Doing PSet {i1}')
-        Model = Land2017(PSet[i1])
+        Model = Land2017(PSet[i1], Cai=10**-4.8)
 
         Stiffness_f = [None]*len(f_list)
         DphaseTa_f = [None]*len(f_list)
@@ -877,9 +878,9 @@ def DoDynamic(PSet, fmin=0.01, fmax=3000, Numf=100, ifPlot = False):
             # if ifPlot:        axsol[0].plot(t[-pointspercycle:]/t[-1], Sin_fun(t[-pointspercycle:], SinFit[0],SinFit[1],SinFit[2]), 'k--')
 
 
-            if ifPlot:
-                axsol[0].plot(t/t[-1], Tasol)
-                axsol[1].plot(t/t[-1], Ysol[:,6])
+            # if ifPlot:
+            #     axsol[0].plot(t/t[-1], Tasol)
+            #     axsol[1].plot(t/t[-1], Ysol[:,6])
 
 
         Stiffness_f = np.array(Stiffness_f)
@@ -918,7 +919,7 @@ if __name__ == '__main__':
 
     Model0 = Land2017()
 
-    Nsamples = 100
+    Nsamples = 0
     print('Doing LH sampling')
     PSet = MakeParamSetLH(Model0, Nsamples, 'AllParams') #
     print('LH sampling completed')
@@ -926,12 +927,12 @@ if __name__ == '__main__':
     # for iPSet, PSet1 in enumerate(PSet):  Land2017(PSet1).Get_ss()  # Test settling of steady state when ifkforce=True
 
     # DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = True)
-    DoCaiStep(PSet, Cai1=10**-6, Cai2=10**-4, ifPlot=True)
+    # DoCaiStep(PSet, Cai1=10**-6, Cai2=10**-4, ifPlot=True)
     # DoQuickStretches_passive(PSet, L0=1.9, ifPlot = True)
     # DoFpCa(PSet, Lambda0=1., ifPlot = True)
 
 
     # DoChirps(PSet, ifPlot = True)
-    # DoDynamic(PSet, fmin=0.01, fmax=3000, Numf=5, ifPlot = True)
+    DoDynamic(PSet, fmin=1, fmax=100, Numf=100, ifPlot = False)
 
     plt.show()
