@@ -403,10 +403,8 @@ class Land2017:
                 'tdec_pas1': 1/Fit1[1]}
 
 
-    def SinResponse(self, freq, numcycles=10, pointspercycle=1000, dLambda_amplitude=0.1, ifPlot=False):
-        # numcycles = 30
-        # pointspercycle = 1000
-        # dLambda_amplitude = 0.1
+    def SinResponse(self, freq, numcycles=4, pointspercycle=30, dLambda_amplitude=0.1, ifPlot=False):
+
         self.dLambdadt_fun = lambda t : \
             dLambda_amplitude * np.cos(2*np.pi*freq*t) * 2*np.pi*freq
 
@@ -433,7 +431,7 @@ class Land2017:
             ax_sol[0].plot(t, Sin_fun(t, *SinFit), 'k--'); ax_sol[0].set_ylabel('Ta')
             ax_sol[1].plot(t, Ysol[:,6]); ax_sol[1].set_ylabel('Lambda')
             fig_sol.suptitle(f'f = {freq}')
-            plt.show()
+            
         return Tasol, Ysol, t, Stiffness, DphaseTa
 
 
@@ -489,7 +487,7 @@ def DoCaiStep(PSet, Cai1=10**-4, Cai2=10**-4, L0=1.9, ifPlot = False):
     print(f'Stepping Cai={Cai1} to {Cai2} (L0={L0})')
     text1=f'Stepping Cai={Cai1} to {Cai2} (L0={L0})'
     if ifPlot:
-        fig1, ax1 = plt.subplots(nrows=4, num=f'Stepping pCai={-np.log10(Cai1)} to {-np.log10(Cai2)} (L0={L0})', figsize=(7, 7) )
+        fig1, ax1 = plt.subplots(nrows=3, num=f'Stepping pCai={-np.log10(Cai1)} to {-np.log10(Cai2)} (L0={L0})', figsize=(7, 7) )
         fig2, ax2 = plt.subplots(nrows=5, num=f'Cai step - States (L0={L0}, pCai={-np.log10(Cai1)} to {-np.log10(Cai2)})', figsize=(7,10))
 
     Features_a = {}   # initialise features dictionary
@@ -513,15 +511,13 @@ def DoCaiStep(PSet, Cai1=10**-4, Cai2=10**-4, L0=1.9, ifPlot = False):
         F = Model.Ttotal(Ysol)
         F_S = Model.Ta_S(Ysol)
         F_W = Model.Ta_W(Ysol)
-        F_pas = Model.F1(Ysol) + Model.F2(Ysol)
-
 
         if ifPlot:
             normF = 1 #F0[0]
             ax1[0].plot(np.append( [-t[-1]/20, 0], t), np.append([F0, F0], F)/normF); ax1[0].set_ylabel('F_total');
             ax1[1].plot(np.append( [-t[-1]/20, 0], t), np.append([F0_S, F0_S], F_S)/normF); ax1[1].set_ylabel('F_S')
             ax1[2].plot(np.append( [-t[-1]/20, 0], t), np.append([F0_W, F0_W], F_W)/normF); ax1[2].set_ylabel('F_W')
-            ax1[3].plot(np.append( [-t[-1]/20, 0], t), np.append([F0_pas, F0_pas], F_pas)/normF); ax1[3].set_ylabel('F_passive')
+            # ax1[3].plot(np.append( [-t[-1]/20, 0], t), np.append([F0_pas, F0_pas], F_pas)/normF); ax1[3].set_ylabel('F_passive')
 
             # fig1.suptitle(f'L0={Model.L0}, Cai={Model.Cai}')
 
@@ -539,6 +535,63 @@ def DoCaiStep(PSet, Cai1=10**-4, Cai2=10**-4, L0=1.9, ifPlot = False):
             Features_a[feat1][iPSet] = features[feat1]
 
     return Features_a
+
+# def DoCaiSteps(PSet, SL0=1.9, ifPlot = False):
+#     Cai1 = 10**-7
+#     Cai2 = 10**-4
+#     NCai = 5
+#     Cai_array = 
+#     print(f'Stepping Cai={Cai1} to {Cai2} (L0={L0})')
+#     text1=f'Stepping Cai={Cai1} to {Cai2} (L0={L0})'
+#     if ifPlot:
+#         fig1, ax1 = plt.subplots(nrows=3, num=f'Stepping pCai={-np.log10(Cai1)} to {-np.log10(Cai2)} (L0={L0})', figsize=(7, 7) )
+#         fig2, ax2 = plt.subplots(nrows=5, num=f'Cai step - States (L0={L0}, pCai={-np.log10(Cai1)} to {-np.log10(Cai2)})', figsize=(7,10))
+
+#     Features_a = {}   # initialise features dictionary
+#     for iPSet, PSet1 in enumerate(PSet):
+#         print(f'Doing Cai step - PSet {iPSet}')
+#         Model = Land2017(PSet1)
+#         Model.Cai = Cai1
+#         Model.L0 = L0
+#         t = np.linspace(0, 1, 1000)
+#         Ysol = None; F0 = [None]*2; F0_S = [None]*2; F0_W = [None]*2; F0_pas = [None]*2; F = [None]*2; F_S = [None]*2; F_W = [None]*2; F_pas = [None]*2
+
+#         F0 = Model.Ttotal(Model.Get_ss())
+#         F0_S = Model.Ta_S(Model.Get_ss())
+#         F0_W = Model.Ta_W(Model.Get_ss())
+#         F0_pas = Model.F1(Model.Get_ss()) + Model.F2(Model.Get_ss())
+#         Ysol = Model.CaiStepResponse(Cai1, Cai2, t)
+#         """
+#         Ysol is  a 2-by-1000-by-8 array containing the ODE solutions for the quick stretch and the quick contraction steps, as functions of time.
+#         State variables are :  CaTRPN, B, S, W , Zs, Zw, Lambda, Cd, E
+#         """
+#         F = Model.Ttotal(Ysol)
+#         F_S = Model.Ta_S(Ysol)
+#         F_W = Model.Ta_W(Ysol)
+
+#         if ifPlot:
+#             normF = 1 #F0[0]
+#             ax1[0].plot(np.append( [-t[-1]/20, 0], t), np.append([F0, F0], F)/normF); ax1[0].set_ylabel('F_total');
+#             ax1[1].plot(np.append( [-t[-1]/20, 0], t), np.append([F0_S, F0_S], F_S)/normF); ax1[1].set_ylabel('F_S')
+#             ax1[2].plot(np.append( [-t[-1]/20, 0], t), np.append([F0_W, F0_W], F_W)/normF); ax1[2].set_ylabel('F_W')
+#             # ax1[3].plot(np.append( [-t[-1]/20, 0], t), np.append([F0_pas, F0_pas], F_pas)/normF); ax1[3].set_ylabel('F_passive')
+
+#             # fig1.suptitle(f'L0={Model.L0}, Cai={Model.Cai}')
+
+#             ax2[0].plot(t, Ysol[:,0]); ax2[0].set_ylabel('CaTrpn')
+#             ax2[1].plot(t, Ysol[:,1]); ax2[1].set_ylabel('B')
+#             ax2[2].plot(t, Ysol[:,2]); ax2[2].set_ylabel('S')
+#             ax2[3].plot(t, Ysol[:,3]); ax2[3].set_ylabel('W')
+#             ax2[4].plot(t, np.ones(len(Ysol))-(Ysol[:,1]+Ysol[:,2]+Ysol[:,3])); ax2[4].set_ylabel('U')
+#             plt.show()
+
+#         features = Model.GetCaiStepFeatures(F,t)
+#         for feat1 in features.keys():
+#             if not feat1 in Features_a:
+#                 Features_a[feat1] = [None]*len(PSet)
+#             Features_a[feat1][iPSet] = features[feat1]
+
+#     return Features_a
 
 
 
@@ -752,6 +805,13 @@ def DoQuickStretches_passive(PSet, L0=1.9, ifPlot = False):
 
 
 def DoFpCa(PSet, Lambda0 = 1., ifPlot = False):
+    import multiprocessing
+    def Do_one_Ca(iCai, Cai1, PSet1, F_array):
+        Model = Land2017(PSet1)
+        Model.Lamda_ext  = Lambda0
+        Model.Cai = Cai1
+        F_array[iCai] = Model.Ta(Model.Get_ss())
+        
     if ifPlot:
         figFpCa = plt.figure(num=f'F-pCa, Lambda0={Lambda0}', figsize=(7,7))
         ax_FpCa = figFpCa.add_subplot(2,1,1)
@@ -766,21 +826,30 @@ def DoFpCa(PSet, Lambda0 = 1., ifPlot = False):
     Cai_array = 10**np.linspace(-7, -4, 100)
     for i1, PSet1 in enumerate(PSet):
         print(f'Doing FpCa (Lambda0={Lambda0})- PSet {i1}')
-        Model = Land2017(PSet1)
-        Model.Lambda_ext = Lambda0
+
+        # Model = Land2017(PSet1)
+        # Model.Lambda_ext = Lambda0
         F_array = [None]*len(Cai_array)
 
-
+        process_list = []
         for iCai, Cai1 in enumerate(Cai_array):
-            Model.Cai = Cai1
-            F_array[iCai] = Model.Ta(Model.Get_ss())
-        # plt.close()
+            # Model.Cai = Cai1
+            # F_array[iCai] = Model.Ta(Model.Get_ss())
+            p = multiprocessing.Process(target=Do_one_Ca, args=[iCai, Cai1, PSet1, F_array])
+            p.start()
+            process_list.append(p)
+        for process in process_list:
+            process.join()
+            
+        
 
         from scipy.optimize import curve_fit
         HillFn = lambda x, ymax, n, ca50 : ymax* x**n/(x**n + ca50**n)
+
         HillParams, cov = curve_fit(HillFn, Cai_array, F_array,
                                     p0=[F_array[-1], 1,
                                         [ca for ica, ca in enumerate(Cai_array) if F_array[ica]>F_array[-1]/2][0] ])   #10**-7])
+        
         Fmax_a[i1] = HillParams[0]
         nH_a[i1] = HillParams[1]
         EC50_a[i1] = HillParams[2]
@@ -870,7 +939,7 @@ def DoDynamic(PSet, fmin=1, fmax=100, Numf=10, ifPlot = False):
         for ifreq, freq in enumerate(f_list):
             print(f'   Doing PSet {i1},  f{ifreq} = {freq}')
 
-            Tasol, Ysol, t , Stiffness, DphaseTa = Model.SinResponse(freq)
+            Tasol, Ysol, t , Stiffness, DphaseTa = Model.SinResponse(freq, ifPlot=True)
 
             Stiffness_f[ifreq] = Stiffness
             DphaseTa_f[ifreq] = DphaseTa
@@ -919,7 +988,7 @@ if __name__ == '__main__':
 
     Model0 = Land2017()
 
-    Nsamples = 0
+    Nsamples = 0   
     print('Doing LH sampling')
     PSet = MakeParamSetLH(Model0, Nsamples, 'AllParams') #
     print('LH sampling completed')
@@ -929,10 +998,10 @@ if __name__ == '__main__':
     # DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = True)
     # DoCaiStep(PSet, Cai1=10**-6, Cai2=10**-4, ifPlot=True)
     # DoQuickStretches_passive(PSet, L0=1.9, ifPlot = True)
-    # DoFpCa(PSet, Lambda0=1., ifPlot = True)
+    # D = DoFpCa(PSet, Lambda0=1.0, ifPlot = True)
 
 
     # DoChirps(PSet, ifPlot = True)
-    DoDynamic(PSet, fmin=1, fmax=100, Numf=100, ifPlot = False)
+    DoDynamic(PSet, fmin=1, fmax=100, Numf=10, ifPlot = True)
 
     plt.show()

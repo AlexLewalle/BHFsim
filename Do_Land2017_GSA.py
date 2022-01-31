@@ -55,29 +55,41 @@ for Feat1 in WhichFeatures:    Features[Feat1] = [None]*len(PSet)
 
 # %%% FpCa
 print('Doing FpCa')
-Features = {**Features, **M.DoFpCa(PSet, Lambda0=1.0, ifPlot=True)}       # update Features dictionary with FpCa entries
+Features_FpCa = M.DoFpCa(PSet, Lambda0=1.0, ifPlot=True)
+Features = {**Features, **Features_FpCa}       # update Features dictionary with FpCa entries
 
 # %%% FpCa with different SL
 
 dLambda = 0.1
 print(f'Doing FpCa with a different SL={1+dLambda}')
 Features_1 = M.DoFpCa(PSet, Lambda0=1+dLambda, ifPlot=True)
-Features_diff = {'dFmaxdLambda': list((np.array(Features_1['Fmax'])-np.array(Features['Fmax']))/dLambda),
+Features_FpCadiffSL = {'dFmaxdLambda': list((np.array(Features_1['Fmax'])-np.array(Features['Fmax']))/dLambda),
                   'dEC50dLambda': list((np.array(Features_1['EC50'])-np.array(Features['EC50']))/dLambda)}
-Features = {**Features, **Features_diff}       # update Features dictionary with FpCa entries
+Features = {**Features, **Features_FpCadiffSL}       # update Features dictionary with FpCa entries
 
+
+# import sys; sys.exit()
 
 # %%% Active quick strethc
 print('Doing QuickStretches')
-Features = {**Features, **M.DoQuickStretches(PSet, ifPlot=True)}        # update Features dictionary with QuickStretch entries
+Features_QuickStretches = M.DoQuickStretches(PSet, ifPlot=True)
+Features = {**Features, **Features_QuickStretches}        # update Features dictionary with QuickStretch entries
 
 # %%% Passive quick stretch
 print('Doing passive QuickStretches')
-Features = {**Features, **M.DoQuickStretches_passive(PSet)}        # update Features dictionary with QuickStretch entries
+Features_QuickStretchesPassive = M.DoQuickStretches_passive(PSet)
+Features = {**Features, **Features_QuickStretchesPassive}        # update Features dictionary with QuickStretch entries
+
 
 # %%% Cai step
 print('Doing Cai steps')
 Features = {**Features, **M.DoCaiStep(PSet, Cai1=10**-7, Cai2=10**-4, L0=1.9, ifPlot=True)}        # update Features dictionary with QuickStretch entries
+
+# %%% Cai steps
+# print('Doing Cai steps')
+# Features_CaiSteps = M.DoCaiSteps(PSet, L0=1.9, ifPlot=True)
+# Features = {**Features, **Features_CaiSteps}        # update Features dictionary with QuickStretch entries
+
 
 
 # test for git diff
