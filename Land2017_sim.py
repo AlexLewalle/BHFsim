@@ -199,7 +199,7 @@ class Land2017:
             dLambdadt_fun_STORE = self.dLambdadt_fun   # store dLambdadt_fun in case it has been set externally
             self.dLambdadt_fun = lambda t: 0.
             Ysolss = odeint(self.dYdt, Y_ss0, np.arange(0,2,0.1),
-                            atol=1e-5)                                  # <------ TOLERANCE
+                            atol=1e-4)                                  # <------ TOLERANCE
             # plt.plot(self.Ta(Ysolss), '.-')
             self.dLambdadt_fun = dLambdadt_fun_STORE
             return Ysolss[-1]   # return the steady the last point of the solution
@@ -526,7 +526,7 @@ def DoCaiStep(PSet, Cai1=10**-4, Cai2=10**-4, L0=1.9, ifPlot = False):
             ax2[2].plot(t, Ysol[:,2]); ax2[2].set_ylabel('S')
             ax2[3].plot(t, Ysol[:,3]); ax2[3].set_ylabel('W')
             ax2[4].plot(t, np.ones(len(Ysol))-(Ysol[:,1]+Ysol[:,2]+Ysol[:,3])); ax2[4].set_ylabel('U')
-            plt.show()
+            
 
         features = Model.GetCaiStepFeatures(F,t)
         for feat1 in features.keys():
@@ -536,62 +536,7 @@ def DoCaiStep(PSet, Cai1=10**-4, Cai2=10**-4, L0=1.9, ifPlot = False):
 
     return Features_a
 
-# def DoCaiSteps(PSet, SL0=1.9, ifPlot = False):
-#     Cai1 = 10**-7
-#     Cai2 = 10**-4
-#     NCai = 5
-#     Cai_array = 
-#     print(f'Stepping Cai={Cai1} to {Cai2} (L0={L0})')
-#     text1=f'Stepping Cai={Cai1} to {Cai2} (L0={L0})'
-#     if ifPlot:
-#         fig1, ax1 = plt.subplots(nrows=3, num=f'Stepping pCai={-np.log10(Cai1)} to {-np.log10(Cai2)} (L0={L0})', figsize=(7, 7) )
-#         fig2, ax2 = plt.subplots(nrows=5, num=f'Cai step - States (L0={L0}, pCai={-np.log10(Cai1)} to {-np.log10(Cai2)})', figsize=(7,10))
 
-#     Features_a = {}   # initialise features dictionary
-#     for iPSet, PSet1 in enumerate(PSet):
-#         print(f'Doing Cai step - PSet {iPSet}')
-#         Model = Land2017(PSet1)
-#         Model.Cai = Cai1
-#         Model.L0 = L0
-#         t = np.linspace(0, 1, 1000)
-#         Ysol = None; F0 = [None]*2; F0_S = [None]*2; F0_W = [None]*2; F0_pas = [None]*2; F = [None]*2; F_S = [None]*2; F_W = [None]*2; F_pas = [None]*2
-
-#         F0 = Model.Ttotal(Model.Get_ss())
-#         F0_S = Model.Ta_S(Model.Get_ss())
-#         F0_W = Model.Ta_W(Model.Get_ss())
-#         F0_pas = Model.F1(Model.Get_ss()) + Model.F2(Model.Get_ss())
-#         Ysol = Model.CaiStepResponse(Cai1, Cai2, t)
-#         """
-#         Ysol is  a 2-by-1000-by-8 array containing the ODE solutions for the quick stretch and the quick contraction steps, as functions of time.
-#         State variables are :  CaTRPN, B, S, W , Zs, Zw, Lambda, Cd, E
-#         """
-#         F = Model.Ttotal(Ysol)
-#         F_S = Model.Ta_S(Ysol)
-#         F_W = Model.Ta_W(Ysol)
-
-#         if ifPlot:
-#             normF = 1 #F0[0]
-#             ax1[0].plot(np.append( [-t[-1]/20, 0], t), np.append([F0, F0], F)/normF); ax1[0].set_ylabel('F_total');
-#             ax1[1].plot(np.append( [-t[-1]/20, 0], t), np.append([F0_S, F0_S], F_S)/normF); ax1[1].set_ylabel('F_S')
-#             ax1[2].plot(np.append( [-t[-1]/20, 0], t), np.append([F0_W, F0_W], F_W)/normF); ax1[2].set_ylabel('F_W')
-#             # ax1[3].plot(np.append( [-t[-1]/20, 0], t), np.append([F0_pas, F0_pas], F_pas)/normF); ax1[3].set_ylabel('F_passive')
-
-#             # fig1.suptitle(f'L0={Model.L0}, Cai={Model.Cai}')
-
-#             ax2[0].plot(t, Ysol[:,0]); ax2[0].set_ylabel('CaTrpn')
-#             ax2[1].plot(t, Ysol[:,1]); ax2[1].set_ylabel('B')
-#             ax2[2].plot(t, Ysol[:,2]); ax2[2].set_ylabel('S')
-#             ax2[3].plot(t, Ysol[:,3]); ax2[3].set_ylabel('W')
-#             ax2[4].plot(t, np.ones(len(Ysol))-(Ysol[:,1]+Ysol[:,2]+Ysol[:,3])); ax2[4].set_ylabel('U')
-#             plt.show()
-
-#         features = Model.GetCaiStepFeatures(F,t)
-#         for feat1 in features.keys():
-#             if not feat1 in Features_a:
-#                 Features_a[feat1] = [None]*len(PSet)
-#             Features_a[feat1][iPSet] = features[feat1]
-
-#     return Features_a
 
 
 
@@ -805,12 +750,12 @@ def DoQuickStretches_passive(PSet, L0=1.9, ifPlot = False):
 
 
 def DoFpCa(PSet, Lambda0 = 1., ifPlot = False):
-    import multiprocessing
-    def Do_one_Ca(iCai, Cai1, PSet1, F_array):
-        Model = Land2017(PSet1)
-        Model.Lamda_ext  = Lambda0
-        Model.Cai = Cai1
-        F_array[iCai] = Model.Ta(Model.Get_ss())
+    # import multiprocessing
+    # def Do_one_Ca(iCai, Cai1, PSet1, F_array):
+    #     Model = Land2017(PSet1)
+    #     Model.Lamda_ext  = Lambda0
+    #     Model.Cai = Cai1
+    #     F_array[iCai] = Model.Ta(Model.Get_ss())
         
     if ifPlot:
         figFpCa = plt.figure(num=f'F-pCa, Lambda0={Lambda0}', figsize=(7,7))
@@ -827,19 +772,19 @@ def DoFpCa(PSet, Lambda0 = 1., ifPlot = False):
     for i1, PSet1 in enumerate(PSet):
         print(f'Doing FpCa (Lambda0={Lambda0})- PSet {i1}')
 
-        # Model = Land2017(PSet1)
-        # Model.Lambda_ext = Lambda0
+        Model = Land2017(PSet1)
+        Model.Lambda_ext = Lambda0
         F_array = [None]*len(Cai_array)
 
-        process_list = []
+        # process_list = []
         for iCai, Cai1 in enumerate(Cai_array):
-            # Model.Cai = Cai1
-            # F_array[iCai] = Model.Ta(Model.Get_ss())
-            p = multiprocessing.Process(target=Do_one_Ca, args=[iCai, Cai1, PSet1, F_array])
-            p.start()
-            process_list.append(p)
-        for process in process_list:
-            process.join()
+            Model.Cai = Cai1
+            F_array[iCai] = Model.Ta(Model.Get_ss())
+        #     p = multiprocessing.Process(target=Do_one_Ca, args=[iCai, Cai1, PSet1, F_array])
+        #     p.start()
+        #     process_list.append(p)
+        # for process in process_list:
+        #     process.join()
             
         
 
@@ -988,7 +933,7 @@ if __name__ == '__main__':
 
     Model0 = Land2017()
 
-    Nsamples = 0   
+    Nsamples = 10   
     print('Doing LH sampling')
     PSet = MakeParamSetLH(Model0, Nsamples, 'AllParams') #
     print('LH sampling completed')
@@ -996,12 +941,12 @@ if __name__ == '__main__':
     # for iPSet, PSet1 in enumerate(PSet):  Land2017(PSet1).Get_ss()  # Test settling of steady state when ifkforce=True
 
     # DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = True)
-    # DoCaiStep(PSet, Cai1=10**-6, Cai2=10**-4, ifPlot=True)
+    DoCaiStep(PSet, Cai1=10**-6, Cai2=10**-4, ifPlot=True)
     # DoQuickStretches_passive(PSet, L0=1.9, ifPlot = True)
     # D = DoFpCa(PSet, Lambda0=1.0, ifPlot = True)
 
 
     # DoChirps(PSet, ifPlot = True)
-    DoDynamic(PSet, fmin=1, fmax=100, Numf=10, ifPlot = True)
+    # DoDynamic(PSet, fmin=1, fmax=100, Numf=10, ifPlot = True)
 
     plt.show()

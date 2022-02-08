@@ -8,7 +8,7 @@ Modified from AL_20211123.py
 @author: al12local
 """
 
-# In[ ]:
+
 import numpy as np
 import matplotlib.pyplot as plt
 from math import floor, ceil
@@ -17,7 +17,6 @@ from GPErks.gp.data.dataset import Dataset
 from GPErks.perks.gsa import SobolGSA
 
 import Land2017_sim as M
-import lhsmdu
 import seaborn as sns
 
 # set logger and enforce reproducibility
@@ -38,63 +37,69 @@ WhichFeatures = ['Fss', 'dFss', 'rFpeak', 'drFpeak', 'tdecay', 'dtdecay',   # <-
                  'dFCaiStep', 'tCaiStep']                                   # <-- from Cai step
 
 
-#%%  Perform experiments and extract features
+#%%  Define reference model and variants
 
 Model0 = M.Land2017()
 
-#%%% LH sampling
 print('Doing LH sampling')
 PSet = M.MakeParamSetLH(Model0, 100,  WhichParams)
 X = np.array([list(dict1.values()) for dict1 in PSet])
 print('LH sampling completed')
 
-
-for Feat1 in WhichFeatures:    Features[Feat1] = [None]*len(PSet)
-
+#%% Do experiments
 
 
-# %%% FpCa
-print('Doing FpCa')
-Features_FpCa = M.DoFpCa(PSet, Lambda0=1.0, ifPlot=True)
-Features = {**Features, **Features_FpCa}       # update Features dictionary with FpCa entries
-
-# %%% FpCa with different SL
-
-dLambda = 0.1
-print(f'Doing FpCa with a different SL={1+dLambda}')
-Features_1 = M.DoFpCa(PSet, Lambda0=1+dLambda, ifPlot=True)
-Features_FpCadiffSL = {'dFmaxdLambda': list((np.array(Features_1['Fmax'])-np.array(Features['Fmax']))/dLambda),
-                  'dEC50dLambda': list((np.array(Features_1['EC50'])-np.array(Features['EC50']))/dLambda)}
-Features = {**Features, **Features_FpCadiffSL}       # update Features dictionary with FpCa entries
+# for Feat1 in WhichFeatures:    Features[Feat1] = [None]*len(PSet)
 
 
-# import sys; sys.exit()
+# # %%% FpCa
+# print('Doing FpCa')
+# Features_FpCa = M.DoFpCa(PSet, Lambda0=1.0, ifPlot=True)
+# Features = {**Features, **Features_FpCa}       # update Features dictionary with FpCa entries
 
-# %%% Active quick strethc
-print('Doing QuickStretches')
-Features_QuickStretches = M.DoQuickStretches(PSet, ifPlot=True)
-Features = {**Features, **Features_QuickStretches}        # update Features dictionary with QuickStretch entries
+# # %%% FpCa with different SL
 
-# %%% Passive quick stretch
-print('Doing passive QuickStretches')
-Features_QuickStretchesPassive = M.DoQuickStretches_passive(PSet)
-Features = {**Features, **Features_QuickStretchesPassive}        # update Features dictionary with QuickStretch entries
+# dLambda = 0.1
+# print(f'/nDoing FpCa with a different SL={1+dLambda}')
+# Features_1 = M.DoFpCa(PSet, Lambda0=1+dLambda, ifPlot=True)
+# Features_FpCadiffSL = {'dFmaxdLambda': list((np.array(Features_1['Fmax'])-np.array(Features['Fmax']))/dLambda),
+#                   'dEC50dLambda': list((np.array(Features_1['EC50'])-np.array(Features['EC50']))/dLambda)}
+# Features = {**Features, **Features_FpCadiffSL}       # update Features dictionary with FpCa entries
 
 
-# %%% Cai step
-print('Doing Cai steps')
-Features = {**Features, **M.DoCaiStep(PSet, Cai1=10**-7, Cai2=10**-4, L0=1.9, ifPlot=True)}        # update Features dictionary with QuickStretch entries
+# # import sys; sys.exit()
 
-# %%% Cai steps
+# # %%% Active quick strethc
+# print('Doing QuickStretches')
+# Features_QuickStretches = M.DoQuickStretches(PSet, ifPlot=True)
+# Features = {**Features, **Features_QuickStretches}        # update Features dictionary with QuickStretch entries
+
+# # %%% Passive quick stretch
+# print('Doing passive QuickStretches')
+# Features_QuickStretchesPassive = M.DoQuickStretches_passive(PSet)
+# Features = {**Features, **Features_QuickStretchesPassive}        # update Features dictionary with QuickStretch entries
+
+
+# # %%% Cai step
 # print('Doing Cai steps')
-# Features_CaiSteps = M.DoCaiSteps(PSet, L0=1.9, ifPlot=True)
-# Features = {**Features, **Features_CaiSteps}        # update Features dictionary with QuickStretch entries
+# Features_CaiStep = M.DoCaiStep(PSet, Cai1=10**-7, Cai2=10**-4, L0=1.9, ifPlot=True)
+# Features = {**Features, **Features_CaiStep}        # update Features dictionary with QuickStretch entries
+
+# # %%% Save Features
+# import pickle
+# with open('Features_results.dat', 'wb') as file_features:
+#     pickle.dump([Features_FpCa, Features_FpCadiffSL, Features_QuickStretches, Features_QuickStretchesPassive, Features_CaiStep], file_features)
 
 
 
-# test for git diff
 
-#%% Create emulator
+#%% Create emulators
+
+import pickle
+with open('Features_results.dat', 'rb') as file_features:
+    [Features_FpCa, Features_FpCadiffSL, Features_QuickStretches, Features_QuickStretchesPassive, Features_CaiStep] = pickle.load(file_features)
+Features = {**Features_FpCa, **Features_FpCadiffSL, **Features_QuickStretches, **Features_QuickStretchesPassive, **Features_CaiStep}
+
 
 # define experiment
 from gpytorch.likelihoods import GaussianLikelihood
@@ -103,7 +108,7 @@ from gpytorch.kernels import RBFKernel, ScaleKernel
 from torchmetrics import MeanSquaredError, R2Score
 from GPErks.gp.experiment import GPExperiment
 from GPErks.train.emulator import GPEmulator
-from GPErks.train.early_stop import GLEarlyStoppingCriterion
+# from GPErks.train.early_stop import GLEarlyStoppingCriterion
 
 
 plt.style.use('seaborn')
@@ -113,6 +118,7 @@ figS1, axS1 = plt.subplots(numrows, numcols, figsize=([14,  9]), num='GSA')
 figSummary, axSummary = plt.subplots(num='Summary - Cumulative sensitivities')
 ParamSummary = np.array([0]*len(Model0.AllParams))
 
+Emulators = {}
 for iFeat, Feat1 in enumerate(WhichFeatures):
     print(f'Doing feature {Feat1}')
     dataset = Dataset(X_train=X,
@@ -136,32 +142,46 @@ for iFeat, Feat1 in enumerate(WhichFeatures):
     )
     device = "cpu"
 
-    emulator = GPEmulator(experiment, device)
+    Emulators[Feat1] = GPEmulator(experiment, device)
 
     optimizer = torch.optim.Adam(experiment.model.parameters(), lr=0.1)
     # esc = GLEarlyStoppingCriterion(max_epochs=1000, alpha=0.1, patience=8)
 
     print(f'Training emulator for {Feat1}')
-    best_model, best_train_stats = emulator.train(optimizer) ;   print(f'   Emulator training completed for {Feat1}')
+    best_model, best_train_stats = Emulators[Feat1].train(optimizer) ;   print(f'   Emulator training completed for {Feat1}')
 
+# Save Emulators     PICKLING ERROR ??????
+# with open('Emulators_results.dat', 'wb') as file_emulators:
+#     pickle.dump(Emulators, file_emulators)
+
+
+
+#%% Do GSA
+
+gsa = {}
+for iFeat, Feat1 in enumerate(WhichFeatures):
     # Perform GSA on emulator
     print(f'Starting GSA for {Feat1}')
-    gsa = SobolGSA(dataset, n=128, seed=seed)
-    gsa.estimate_Sobol_indices_with_emulator(emulator, n_draws=100); print(f'   GSA complete for {Feat1}')
-    gsa.summary()
+    dataset = Dataset(X_train=X,
+                      y_train= Features[Feat1],
+                      l_bounds=[Model0.ParRange[param1][0] for param1 in Model0.AllParams],
+                      u_bounds=[Model0.ParRange[param1][1] for param1 in Model0.AllParams])
+    gsa[Feat1] = SobolGSA(dataset, n=128, seed=seed)
+    gsa[Feat1].estimate_Sobol_indices_with_emulator(Emulators[Feat1], n_draws=100); print(f'   GSA complete for {Feat1}')
+    gsa[Feat1].summary()
 
-    ParamSummary = ParamSummary + np.mean(gsa.S1, axis=0)
+    ParamSummary = ParamSummary + np.mean(gsa[Feat1].S1, axis=0)
 
-    gsa.ylabels = list(Model0.AllParams)
+    gsa[Feat1].ylabels = list(Model0.AllParams)
 #    M.PlotS1(gsa, Feat1)
     ax1 = axS1.ravel()
-    sns.boxplot(ax=ax1[iFeat], data=gsa.S1)
+    sns.boxplot(ax=ax1[iFeat], data=gsa[Feat1].S1)
     ax1[iFeat].set_title(Feat1)
-    ax1[iFeat].set_xticklabels(gsa.ylabels, rotation=90)
+    ax1[iFeat].set_xticklabels(gsa[Feat1].ylabels, rotation=90)
 
 figS1.tight_layout()
 axSummary.barh(Model0.AllParams, ParamSummary, align='center')
-# axSummary.set_yticklabels(Model0.AllParams)
+
 
 
 #%% Do PCA
