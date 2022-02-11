@@ -24,28 +24,54 @@ ifkforce = True
 
 class Land2017:
 
-    AllParams = ('a', 'b', 'k', 'eta_l', 'eta_s', 'k_trpn', 'ntrpn', 'Ca50ref', 'ku', 'nTm', 'trpn50', 'kuw', 'kws', 'rw', 'rs', 'gs','gw', 'phi', 'Aeff','beta0', 'beta1', 'Tref', 'k2','k1','kforce')
+    AllParams = ('a', 
+                 'b', 
+                 'k', 
+                 'eta_l', 
+                 'eta_s', 
+                 'k_trpn_on',
+                 'k_trpn_off',
+                 'ntrpn', 
+                 'Ca50ref', 
+                 'ku', 
+                 'nTm', 
+                 'trpn50', 
+                 'kuw', 
+                 'kws', 
+                 'rw', 
+                 'rs', 
+                 'gs',
+                 'gw', 
+                 'phi', 
+                 'Aeff',
+                 'beta0', 
+                 'beta1', 
+                 'Tref', 
+                 'k2',
+                 'k1',
+                 'kforce')
 
     # Passive tension parameters
     a = 2.1e3  # Pa
     b = 9.1 # dimensionless
     k = 7 # dimensionless
-    eta_l =  200e-3 # /s
-    eta_s =  20e-3 # /s
+    eta_l =  200e-3 # s
+    eta_s =  20e-3 # s
 
     # Active tension parameters
-    k_trpn = 0.1e3 # /s
+    k_trpn_on = 0.1e3 # /s
+    k_trpn_off = 0.03e3 # /s
     ntrpn = 2 # dimensionless
     Ca50ref = 2.5e-6  # M
-    ku = 1e3 # /s
+    ku = 1000  # /s
     nTm = 2.2 # dimensionless
     trpn50 = 0.35 # dimensionless (CaTRPN in Eq.9 is dimensionless as it represents a proportion)
-    kuw = 0.026e3 #0.026e3 # /s
+    kuw = 0.026e3    # /s
     kws = 0.004e3 # /s
     rw = 0.5
     rs = 0.25
     gs = 0.0085e3 # /s (assume "/ms" was omitted in paper)
-    gw = 0.615e3  # /s (assume "/ms" was omitted in paper)
+    gw = 0.615e3 # /s (assume "/ms" was omitted in paper)
     phi = 2.23
     Aeff = 25
     beta0 = 2.3
@@ -59,22 +85,31 @@ class Land2017:
     Cai =  10**(-4) # M
 
 
-    kwu = kuw *(1/rw -1) - kws 	# eq. 23
-    ksu = kws*rw*(1/rs - 1)		# eq. 24
-    kb = ku*trpn50**nTm /(1-rs-(1-rs)*rw)
-    Aw = Aeff * rs/((1-rs)*rw + rs) 		# eq. 26
-    As = Aw 		# eq. 26
+    def kwu(self):
+        return self.kuw *(1/self.rw -1) - self.kws 	# eq. 23
+    def ksu(self):
+        return self.kws*self.rw*(1/self.rs - 1)		# eq. 24
+    def kb(self): 
+        return self.ku*self.trpn50**self.nTm /(1-self.rs-(1-self.rs)*self.rw)
 
     L0 = 1.9
     dLambda_ext = 0.1       # To be specified by the experiment
     Lambda_ext = 1          # To be specified by the experiment
     dLambdadt_fun = lambda t: 0    # This gets specified by particular experiments
 
+    # Aw = Aeff * rs/((1-rs)*rw + rs) 		# eq. 26
+    # As = Aw
+    def Aw(self):
+        return self.Aeff * self.rs/((1-self.rs)*self.rw + self.rs) 		# eq. 26
+    def As(self):
+        return self.Aw()
+    
+    
     def __init__(self, *args, **kwargs):
         """
         Parameters
         ----------
-        *args : Dictionary specifying the multiplicatin factor for altering parameter values.
+        *args : Dictionary  (PSet) specifying the multiplicatin factor for altering parameter values.
         **kwargs : Direct specification of parameter values.
         When both args and kwargs are specified, the parameter values are first set according to kwargs, and then modified according to args.
 
@@ -87,7 +122,8 @@ class Land2017:
         self.ParRange = {}
         self.ParBounds = {}
         for param1 in self.AllParams:
-            self.ParRange[param1] = (0.5, 2) #(0.2, 5)
+            ParFac = 1.5
+            self.ParRange[param1] = (1/ParFac, ParFac) #(0.2, 5)
             self.ParBounds[param1] = (self.ParRange[param1][0]*getattr(self, param1),
                                       self.ParRange[param1][1]*getattr(self, param1))
             if self.ParBounds[param1][0]>self.ParBounds[param1][1]:     # Ensure the lower bound is less than the upper bound.
@@ -151,14 +187,14 @@ class Land2017:
         Cd_ss = Lambda_ss - 1
         CaTRPN_ss = ((self.Cai/self.Ca50(Lambda_ss))**-self.ntrpn + 1)**-1
         U_ss = (1 \
-                + self.kb/self.ku*CaTRPN_ss**-self.nTm \
-                + self.kws*self.kuw/(self.ksu*(self.kwu+self.kws)) \
-                + self.kuw/(self.kwu+self.kws) \
+                + self.kb()/self.ku*CaTRPN_ss**-self.nTm \
+                + self.kws*self.kuw/(self.ksu()*(self.kwu()+self.kws)) \
+                + self.kuw/(self.kwu()+self.kws) \
                 )**-1
-        W_ss = self.kuw/(self.kwu+self.kws)*U_ss
-        S_ss = self.kws/self.ksu * W_ss
+        W_ss = self.kuw/(self.kwu()+self.kws)*U_ss
+        S_ss = self.kws/self.ksu() * W_ss
         # B_ss = U_ss/(1-self.rs-(1-self.rs)*self.rw)
-        B_ss = self.kb/self.ku * CaTRPN_ss**-self.nTm * U_ss
+        B_ss = self.kb()/self.ku * CaTRPN_ss**-self.nTm * U_ss
         Zw_ss = 0
         Zs_ss = 0
         Y_ss0 = np.array((CaTRPN_ss, B_ss, S_ss, W_ss , Zs_ss, Zw_ss, Lambda_ss, Cd_ss))
@@ -170,22 +206,22 @@ class Land2017:
         """
         Lambda_ss = self.Lambda_ext
         Cd_ss = Lambda_ss - 1
-        CaTRPN_ss = ((self.Cai/self.Ca50(Lambda_ss))**-self.ntrpn + 1)**-1
+        CaTRPN_ss = (self.k_trpn_off/self.k_trpn_on * (self.Cai/self.Ca50(Lambda_ss))**-self.ntrpn + 1)**-1
 
         Mat = np.zeros( (6,6) )
         #         U  B  S  W  BE  UE
         Mat[0] = [1, 1, 1, 1, 1,  1]
-        Mat[1,0] = self.kb*CaTRPN_ss**(-self.nTm/2)
+        Mat[1,0] = self.kb()*CaTRPN_ss**(-self.nTm/2)
         Mat[1,1] = -self.ku*CaTRPN_ss**(self.nTm/2) - self.k2
         Mat[1,4] = self.k1
         Mat[2,3] = self.kws
-        Mat[2,2] = -self.ksu
+        Mat[2,2] = -self.ksu()
         Mat[3,0] = self.kuw
-        Mat[3,3] = -self.kwu - self.kws
-        Mat[4,5] = self.kb*CaTRPN_ss**(-self.nTm/2)
+        Mat[3,3] = -self.kwu() - self.kws
+        Mat[4,5] = self.kb()*CaTRPN_ss**(-self.nTm/2)
         Mat[4,4] = -self.ku*CaTRPN_ss**(self.nTm/2) - self.k1  #  <--- no force dependence in k1 here => approximation
         Mat[4,1] = self.k2
-        Mat[5,5] = -self.kb*CaTRPN_ss**(-self.nTm/2) - self.k1  #  <--- no force dependence in k1 here => approximation
+        Mat[5,5] = -self.kb()*CaTRPN_ss**(-self.nTm/2) - self.k1  #  <--- no force dependence in k1 here => approximation
         Mat[5,4] = self.ku*CaTRPN_ss**(self.nTm/2)
         Mat[5,0] = self.k2
         Zw_ss = 0
@@ -206,44 +242,54 @@ class Land2017:
         else:
             return Y_ss0
 
+    def gwu(self, Y):
+        CaTRPN, B, S, W, Zs, Zw, Lambda, Cd, BE, UE = Y
+        return self.gw * abs(Zw)      # eq. 15
+    
+    def gsu(self, Y):
+        CaTRPN, B, S, W, Zs, Zw, Lambda, Cd, BE, UE = Y
+        if Zs+1 < 0:        # eq. 17
+            return self.gs*(-Zs-1)
+        elif Zs+1 > 1:
+            return self.gs*Zs
+        else:
+            return 0
+        
+    def cw(self, Y):
+        CaTRPN, B, S, W, Zs, Zw, Lambda, Cd, BE, UE = Y
+        return self.phi * self.kuw * self.U(Y)/W
+    
+    def cs(self, Y):
+        CaTRPN, B, S, W, Zs, Zw, Lambda, Cd, BE, UE = Y
+        return self.phi * self.kws * W/S
 
+    def U(self, Y):
+        CaTRPN, B, S, W, Zs, Zw, Lambda, Cd, BE, UE = Y
+        return 1-B-S-W  -BE-UE
 
     def dYdt(self, Y, t):
         CaTRPN, B, S, W, Zs, Zw, Lambda, Cd, BE, UE = Y
-        U = 1-B-S-W  -BE-UE
 
-        # print(self.Ttotal(Y))
-
-        gwu = self.gw * abs(Zw)      # eq. 15
-        if Zs+1 < 0:        # eq. 17
-            gsu = self.gs*(-Zs-1)
-        elif Zs+1 > 1:
-            gsu = self.gs*Zs
-        else:
-            gsu = 0
-
-        cw = self.phi * self.kuw * U/W
-        cs = self.phi * self.kws * W/S
-        dZwdt = self.Aw*self.dLambdadt_fun(t) - cw*Zw
-        dZsdt = self.As*self.dLambdadt_fun(t) - cs*Zs
-        dCaTRPNdt = self.k_trpn*((self.Cai/self.Ca50(Lambda))**self.ntrpn*(1-CaTRPN)-CaTRPN)     # eq. 9
-        # kb = self.ku * self.trpn50**self.nTm/ (1 - self.rs - (1-self.rs)*self.rw)     # eq. 25
-        dBdt = self.kb*CaTRPN**(-self.nTm/2)*U  \
+        
+        dZwdt = self.Aw()*self.dLambdadt_fun(t) - self.cw(Y)*Zw
+        dZsdt = self.As()*self.dLambdadt_fun(t) - self.cs(Y)*Zs
+        dCaTRPNdt = self.k_trpn_on*(self.Cai/self.Ca50(Lambda))**self.ntrpn*(1-CaTRPN)-   self.k_trpn_off*CaTRPN     # eq. 9        # kb = self.ku * self.trpn50**self.nTm/ (1 - self.rs - (1-self.rs)*self.rw)     # eq. 25
+        dBdt = self.kb()*CaTRPN**(-self.nTm/2)*self.U(Y)  \
             - self.ku*CaTRPN**(self.nTm/2)*B  \
             - self.k2*B   \
             + self.k1*(1+self.kforce*max((self.Ta(Y),0.))) * BE  # eq.10 in Land2017, amended to include myosin off state dynamics
-        dWdt = self.kuw*U -self.kwu*W - self.kws*W - gwu*W     # eq. 12
-        dSdt = self.kws*W - self.ksu*S - gsu*S        # eq. 13
+        dWdt = self.kuw*self.U(Y) -self.kwu()*W - self.kws*W - self.gwu(Y)*W     # eq. 12
+        dSdt = self.kws*W - self.ksu()*S - self.gsu(Y)*S        # eq. 13
 
 
         # New "myosin off" states
-        dBEdt = self.kb*CaTRPN**(-self.nTm/2)*UE  \
+        dBEdt = self.kb()*CaTRPN**(-self.nTm/2)*UE  \
             - self.ku*CaTRPN**(self.nTm/2)*BE  \
             + self.k2*B \
             - self.k1*(1+self.kforce*self.Ttotal(Y)) * BE
-        dUEdt = -self.kb*CaTRPN**(-self.nTm/2)*UE  \
+        dUEdt = -self.kb()*CaTRPN**(-self.nTm/2)*UE  \
             + self.ku*CaTRPN**(self.nTm/2)*BE  \
-            + self.k2*U \
+            + self.k2*self.U(Y) \
             - self.k1*(1+self.kforce*self.Ttotal(Y)) * UE
 
 
@@ -253,6 +299,7 @@ class Land2017:
             dCddt = self.k/self.eta_l * (Lambda-1-Cd)     # eq. 5
         else:
             dCddt = self.k/self.eta_s * (Lambda-1-Cd)     # eq. 5
+            
 
         return (dCaTRPNdt, dBdt, dSdt, dWdt, dZsdt, dZwdt, dLambdadt, dCddt, dBEdt, dUEdt)
 
@@ -303,8 +350,8 @@ class Land2017:
         """
         self.dLambdadt_fun = lambda t: 0
         CaTRPN_0, B_0, S_0, W_0 , Zs_0, Zw_0, Lambda_0, Cd_0, BE_0, UE_0 = self.Get_ss()
-        Zs_0 = Zs_0 + self.As*dLambda
-        Zw_0 = Zw_0 + self.Aw*dLambda
+        Zs_0 = Zs_0 + self.As()*dLambda
+        Zw_0 = Zw_0 + self.Aw()*dLambda
         self.Lambda_ext = Lambda_0 + dLambda    # <----- update Lambda_ext
         Y0 = [CaTRPN_0, B_0, S_0, W_0 , Zs_0, Zw_0, Lambda_0+dLambda, Cd_0, BE_0, UE_0]
         Ysol1 = odeint(self.dYdt, Y0, t)
@@ -374,8 +421,9 @@ class Land2017:
 
 
         return {'Fss' : F0[0],
-                'dFss' : F0[1]/F0[0] ,
-                'rFpeak': max(F[0])/F0[0],
+                'maxDF': F[0][0] - min(F[0]),
+                'dFss' : F0[1] / F0[0] ,
+                'rFpeak': max(F[0]) / F0[0],
                 'drFpeak': (max(F[0])-min(F[1])) / F0[0],
                 'tdecay': tdec0,
                 'dtdecay': tdec1/tdec0
@@ -545,7 +593,7 @@ def DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = False):
     text1=f'Quick stretches (L0={L0}, Cai={Cai})'
     if ifPlot:
         fig1, ax1 = plt.subplots(nrows=4, ncols=2, num=f'Quick stretches (L0={L0}, pCai={-np.log10(Cai)})', figsize=(21, 7))
-        fig2, ax2 = plt.subplots(nrows=8, ncols=2, num=f'Quick stretches - States (L0={L0}, pCai={-np.log10(Cai)})', figsize=(7,10))
+        fig2, ax2 = plt.subplots(nrows=9, ncols=2, num=f'Quick stretches - States (L0={L0}, pCai={-np.log10(Cai)})', figsize=(7,10))
 
     Features_a = {}   # initialise features dictionary
 
@@ -555,7 +603,7 @@ def DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = False):
         Model = Land2017(PSet1)
         Model.Cai = Cai
         Model.L0 = L0
-        dLambda = 0.1
+        dLambda = 0.05
         t = np.linspace(0, 1, 1000)
         Ysol = [None]*2; F0 = [None]*2; F0_S = [None]*2; F0_W = [None]*2; F0_pas = [None]*2; F = [None]*2; F_S = [None]*2; F_W = [None]*2; F_pas = [None]*2
         for i1, dLambda1 in enumerate((dLambda, -dLambda)):
@@ -594,22 +642,24 @@ def DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = False):
             fig1.suptitle(f'L0={Model.L0}, Cai={Model.Cai},    dLambda={dLambda}')
 
             # No need to plot CaTRPN (i.e. Ysol[0][:,0]) since no dynamics.
-            ax2[0,0].plot(t, Ysol[0][:,1]); ax2[0,0].set_ylabel('B')
-            ax2[0,1].plot(t, Ysol[1][:,1])
-            ax2[1,0].plot(t, Ysol[0][:,2]); ax2[1,0].set_ylabel('S')
-            ax2[1,1].plot(t, Ysol[1][:,2])
-            ax2[2,0].plot(t, Ysol[0][:,3]); ax2[2,0].set_ylabel('W')
-            ax2[2,1].plot(t, Ysol[1][:,3])
-            ax2[3,0].plot(t, np.ones(len(Ysol[0]))-(Ysol[0][:,1]+Ysol[0][:,2]+Ysol[0][:,3]+Ysol[0][:,8]+Ysol[0][:,9])); ax2[3,0].set_ylabel('U')
-            ax2[3,1].plot(t, np.ones(len(Ysol[0]))-(Ysol[1][:,1]+Ysol[1][:,2]+Ysol[1][:,3]))
-            ax2[4,0].plot(t, Ysol[0][:,8]+Ysol[0][:,9]); ax2[4,0].set_ylabel('BE+UE')
-            ax2[4,1].plot(t, Ysol[1][:,8]+Ysol[0][:,9])
-            ax2[5,0].plot(t, Ysol[0][:,4]); ax2[5,0].set_ylabel('Zs')
-            ax2[5,1].plot(t, Ysol[1][:,4])
-            ax2[6,0].plot(t, Ysol[0][:,5]); ax2[6,0].set_ylabel('Zw')
-            ax2[6,1].plot(t, Ysol[1][:,5])
-            ax2[7,0].plot(t, Ysol[0][:,7]); ax2[7,0].set_ylabel('Cd')
-            ax2[7,1].plot(t, Ysol[1][:,7])
+            ax2[0,0].plot(t, Ysol[0][:,0]); ax2[0,0].set_ylabel('CaTRPN')
+            ax2[0,0].plot(t, Ysol[1][:,0]);
+            ax2[1,0].plot(t, Ysol[0][:,1]); ax2[1,0].set_ylabel('B')
+            ax2[1,1].plot(t, Ysol[1][:,1])
+            ax2[2,0].plot(t, Ysol[0][:,2]); ax2[2,0].set_ylabel('S')
+            ax2[2,1].plot(t, Ysol[1][:,2])
+            ax2[3,0].plot(t, Ysol[0][:,3]); ax2[3,0].set_ylabel('W')
+            ax2[3,1].plot(t, Ysol[1][:,3])
+            ax2[4,0].plot(t, np.ones(len(Ysol[0]))-(Ysol[0][:,1]+Ysol[0][:,2]+Ysol[0][:,3]+Ysol[0][:,8]+Ysol[0][:,9])); ax2[4,0].set_ylabel('U')
+            ax2[4,1].plot(t, np.ones(len(Ysol[0]))-(Ysol[1][:,1]+Ysol[1][:,2]+Ysol[1][:,3]))
+            ax2[5,0].plot(t, Ysol[0][:,8]+Ysol[0][:,9]); ax2[5,0].set_ylabel('BE+UE')
+            ax2[5,1].plot(t, Ysol[1][:,8]+Ysol[0][:,9])
+            ax2[6,0].plot(t, Ysol[0][:,4]); ax2[6,0].set_ylabel('Zs')
+            ax2[6,1].plot(t, Ysol[1][:,4])
+            ax2[7,0].plot(t, Ysol[0][:,5]); ax2[7,0].set_ylabel('Zw')
+            ax2[7,1].plot(t, Ysol[1][:,5])
+            ax2[8,0].plot(t, Ysol[0][:,7]); ax2[8,0].set_ylabel('Cd')
+            ax2[8,1].plot(t, Ysol[1][:,7])
 
     if ifPlot:
         # for i2 in list(range(5)): # equalize axis ranges for stretch and release.
@@ -618,13 +668,13 @@ def DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = False):
         #     ax1[i2,0].set_ylim(ylim); ax1[i2,1].set_ylim(ylim)
             # ax1[i2,0].spines['right'].set_visible(False)
             # ax1[i2,1].spines['left'].set_visible(False); ax1[i2,1].axes.yaxis.set_ticks([])
-        for i2 in list(range(5)): # equalize axis ranges for stretch and release.
+        for i2 in list(range(6)): # equalize axis ranges for stretch and release.
             ylim = (0, max( ax2[i2,0].get_ylim()[1], ax2[i2,1].get_ylim()[1]))
             ax2[i2,0].set_ylim((0,1.05)) #ylim)
             ax2[i2,1].set_ylim((0,1.05)) #ylim)
             ax2[i2,0].spines['right'].set_visible(False)
             ax2[i2,1].spines['left'].set_visible(False); ax2[i2,1].axes.yaxis.set_ticks([])
-        for i2 in (5,6):
+        for i2 in (6,7,8):
             ylim = (min( ax2[i2,0].get_ylim()[0], ax2[i2,1].get_ylim()[0]),
                     max( ax2[i2,0].get_ylim()[1], ax2[i2,1].get_ylim()[1]))
             ax2[i2,0].set_ylim(ylim); ax2[i2,1].set_ylim(ylim)
@@ -653,7 +703,7 @@ def DoQuickStretches_passive(PSet, L0=1.9, ifPlot = False):
         print(f'Doing passive quick stretches - PSet {iPSet}')
         Model = Land2017(PSet1)
         Model.L0 = L0
-        dLambda = 0.1
+        dLambda = 0.05
         t = np.linspace(0, 1, 1000)
         Ysol = [None]*2; F0 = [None]*2; F0_S = [None]*2; F0_W = [None]*2; F0_pas = [None]*2; F = [None]*2; F_S = [None]*2; F_W = [None]*2; F_pas = [None]*2
         for i1, dLambda1 in enumerate((dLambda, -dLambda)):
@@ -905,27 +955,6 @@ def DoDynamic(PSet, fmin=1, fmax=100, Numf=10, ifPlot = False):
         ax[2].set_aspect('equal', adjustable='box')
 
 
-# def AnalyseDynamic (A,B, t, f):
-#     dA = np.diff(A)
-#     dA1 = dA[1:]
-#     dA0 = dA[0:-1]
-#     jMaxA = [i for i, x in enumerate(np.sign(dA0) > np.sign(dA1)) if x]
-#     jMinA = [i for i, x in enumerate(np.sign(dA0) < np.sign(dA1)) if x]
-#     dB = np.diff(B)
-#     dB1 = dB[1:]
-#     dB0 = dB[0:-1]
-#     jMaxB = [i+1 for i, x in enumerate(np.sign(dB0) > np.sign(dB1)) if x]
-#     jMinB = [i+1 for i, x in enumerate(np.sign(dB0) < np.sign(dB1)) if x]
-#     jOK = min(len(jMaxA), len(jMinA), len(jMaxB), len(jMinB))
-#     ; jMaxB = jMaxB[-jOK:0]; jMinB =jMinB[-jOK:0];
-
-#     ampA = (A[jMaxA]-A[jMinA])/2
-#     ampB = (B[jMaxB]-B[jMinB])/2
-#     Modulus = ampB / ampA
-#     Dphase = (t[jMaxB]-t[jMaxA]) * 2*np.pi*f( (t[jMaxB]+t[jMaxA])/2 )
-
-#     return Modulus, Dphase, (t[jMaxB]+t[jMaxA])/2
-
 
 
 
@@ -933,15 +962,15 @@ if __name__ == '__main__':
 
     Model0 = Land2017()
 
-    Nsamples = 10   
+    Nsamples = 10  
     print('Doing LH sampling')
-    PSet = MakeParamSetLH(Model0, Nsamples, 'AllParams') #
+    PSet = MakeParamSetLH(Model0, Nsamples, 'kforce') # 'AllParams') #   'ku' )  #   'kuw' ) #   
     print('LH sampling completed')
 
     # for iPSet, PSet1 in enumerate(PSet):  Land2017(PSet1).Get_ss()  # Test settling of steady state when ifkforce=True
 
-    # DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = True)
-    DoCaiStep(PSet, Cai1=10**-6, Cai2=10**-4, ifPlot=True)
+    Features_a = DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = True)
+    # DoCaiStep(PSet, Cai1=10**-6, Cai2=10**-4, ifPlot=True)
     # DoQuickStretches_passive(PSet, L0=1.9, ifPlot = True)
     # D = DoFpCa(PSet, Lambda0=1.0, ifPlot = True)
 
