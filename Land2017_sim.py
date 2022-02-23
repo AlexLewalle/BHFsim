@@ -1,4 +1,3 @@
-
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import odeint, ode
@@ -24,29 +23,29 @@ ifkforce = True
 
 class Land2017:
 
-    AllParams = ('a', 
-                 'b', 
-                 'k', 
-                 'eta_l', 
-                 'eta_s', 
+    AllParams = ('a',
+                 'b',
+                 'k',
+                 'eta_l',
+                 'eta_s',
                  'k_trpn_on',
                  'k_trpn_off',
-                 'ntrpn', 
-                 'Ca50ref', 
-                 'ku', 
-                 'nTm', 
-                 'trpn50', 
-                 'kuw', 
-                 'kws', 
-                 'rw', 
-                 'rs', 
+                 'ntrpn',
+                 'Ca50ref',
+                 'ku',
+                 'nTm',
+                 'trpn50',
+                 'kuw',
+                 'kws',
+                 'rw',
+                 'rs',
                  'gs',
-                 'gw', 
-                 'phi', 
+                 'gw',
+                 'phi',
                  'Aeff',
-                 'beta0', 
-                 'beta1', 
-                 'Tref', 
+                 'beta0',
+                 'beta1',
+                 'Tref',
                  'k2',
                  'k1',
                  'kforce')
@@ -89,7 +88,7 @@ class Land2017:
         return self.kuw *(1/self.rw -1) - self.kws 	# eq. 23
     def ksu(self):
         return self.kws*self.rw*(1/self.rs - 1)		# eq. 24
-    def kb(self): 
+    def kb(self):
         return self.ku*self.trpn50**self.nTm /(1-self.rs-(1-self.rs)*self.rw)
 
     L0 = 1.9
@@ -103,8 +102,8 @@ class Land2017:
         return self.Aeff * self.rs/((1-self.rs)*self.rw + self.rs) 		# eq. 26
     def As(self):
         return self.Aw()
-    
-    
+
+
     def __init__(self, *args, **kwargs):
         """
         Parameters
@@ -122,7 +121,7 @@ class Land2017:
         self.ParRange = {}
         self.ParBounds = {}
         for param1 in self.AllParams:
-            ParFac = 1.5
+            ParFac = 2
             self.ParRange[param1] = (1/ParFac, ParFac) #(0.2, 5)
             self.ParBounds[param1] = (self.ParRange[param1][0]*getattr(self, param1),
                                       self.ParRange[param1][1]*getattr(self, param1))
@@ -245,7 +244,7 @@ class Land2017:
     def gwu(self, Y):
         CaTRPN, B, S, W, Zs, Zw, Lambda, Cd, BE, UE = Y
         return self.gw * abs(Zw)      # eq. 15
-    
+
     def gsu(self, Y):
         CaTRPN, B, S, W, Zs, Zw, Lambda, Cd, BE, UE = Y
         if Zs+1 < 0:        # eq. 17
@@ -254,11 +253,11 @@ class Land2017:
             return self.gs*Zs
         else:
             return 0
-        
+
     def cw(self, Y):
         CaTRPN, B, S, W, Zs, Zw, Lambda, Cd, BE, UE = Y
         return self.phi * self.kuw * self.U(Y)/W
-    
+
     def cs(self, Y):
         CaTRPN, B, S, W, Zs, Zw, Lambda, Cd, BE, UE = Y
         return self.phi * self.kws * W/S
@@ -270,7 +269,7 @@ class Land2017:
     def dYdt(self, Y, t):
         CaTRPN, B, S, W, Zs, Zw, Lambda, Cd, BE, UE = Y
 
-        
+
         dZwdt = self.Aw()*self.dLambdadt_fun(t) - self.cw(Y)*Zw
         dZsdt = self.As()*self.dLambdadt_fun(t) - self.cs(Y)*Zs
         dCaTRPNdt = self.k_trpn_on*(self.Cai/self.Ca50(Lambda))**self.ntrpn*(1-CaTRPN)-   self.k_trpn_off*CaTRPN     # eq. 9        # kb = self.ku * self.trpn50**self.nTm/ (1 - self.rs - (1-self.rs)*self.rw)     # eq. 25
@@ -299,7 +298,7 @@ class Land2017:
             dCddt = self.k/self.eta_l * (Lambda-1-Cd)     # eq. 5
         else:
             dCddt = self.k/self.eta_s * (Lambda-1-Cd)     # eq. 5
-            
+
 
         return (dCaTRPNdt, dBdt, dSdt, dWdt, dZsdt, dZwdt, dLambdadt, dCddt, dBEdt, dUEdt)
 
@@ -479,7 +478,7 @@ class Land2017:
             ax_sol[0].plot(t, Sin_fun(t, *SinFit), 'k--'); ax_sol[0].set_ylabel('Ta')
             ax_sol[1].plot(t, Ysol[:,6]); ax_sol[1].set_ylabel('Lambda')
             fig_sol.suptitle(f'f = {freq}')
-            
+
         return Tasol, Ysol, t, Stiffness, DphaseTa
 
 
@@ -501,25 +500,31 @@ def MakeParamSetLH(Model, numsamples, *args):
     outputs:
         Returns a list of dictionaries, with the key being the name of the parameter, and the corresponding value.
     """
+
     if numsamples == 0 :
         result = [{}]
         for p1 in Model.AllParams:
-            result[0][p1] = 1
+            result[0][p1] = 1.
     else:
-        if 'AllParams' in args:
+        if len(args)==0 | ('AllParams' in args):
             TargetSet = Model.AllParams
         else:
             TargetSet = args
-        numparams = len(TargetSet)
-        LHsamples = lhsmdu.sample(numparams, numsamples)
+        numtargetparams = len(TargetSet)
+        LHsamples = lhsmdu.sample(numtargetparams, numsamples)
 
         result = [None]*numsamples
         for s1 in range(0,numsamples):
             result[s1] = {}
-            for ip1, p1 in enumerate(TargetSet):
+            for p1 in Model.AllParams:   # initialise all parameter factors to 1.
+                result[s1][p1] = 1.
+            for ip1, p1 in enumerate(TargetSet):   # change target parameter factors to LH values.
                 result[s1][p1] = Model.ParRange[p1][0] + (Model.ParRange[p1][1]-Model.ParRange[p1][0])*LHsamples[ip1, s1]  # Creates a dictionary entry for each modified parameter p1.
     return result
 
+def PSet2X(PSet):
+    X = np.array([list(dict1.values()) for dict1 in PSet])
+    return X
 
 def PlotS1(gsa, Feature):
     plt.style.use("seaborn")
@@ -531,7 +536,7 @@ def PlotS1(gsa, Feature):
     axS1[1].set_xticklabels(gsa.ylabels, rotation=45); axS1[0].set_title('Stotal')
 
 
-def DoCaiStep(PSet, Cai1=10**-4, Cai2=10**-4, L0=1.9, ifPlot = False):
+def DoCaiStep(PSet, Cai1=10**-4, Cai2=10**-4, L0=1.9, ifPlot = False, ifSave = False):
     print(f'Stepping Cai={Cai1} to {Cai2} (L0={L0})')
     text1=f'Stepping Cai={Cai1} to {Cai2} (L0={L0})'
     if ifPlot:
@@ -574,7 +579,7 @@ def DoCaiStep(PSet, Cai1=10**-4, Cai2=10**-4, L0=1.9, ifPlot = False):
             ax2[2].plot(t, Ysol[:,2]); ax2[2].set_ylabel('S')
             ax2[3].plot(t, Ysol[:,3]); ax2[3].set_ylabel('W')
             ax2[4].plot(t, np.ones(len(Ysol))-(Ysol[:,1]+Ysol[:,2]+Ysol[:,3])); ax2[4].set_ylabel('U')
-            
+
 
         features = Model.GetCaiStepFeatures(F,t)
         for feat1 in features.keys():
@@ -582,13 +587,17 @@ def DoCaiStep(PSet, Cai1=10**-4, Cai2=10**-4, L0=1.9, ifPlot = False):
                 Features_a[feat1] = [None]*len(PSet)
             Features_a[feat1][iPSet] = features[feat1]
 
+    if ifSave:
+        import pickle
+        with open('Features_CaiStep.dat', 'wb') as file_features:
+            pickle.dump([PSet, Features_a], file_features)
     return Features_a
 
 
 
 
 
-def DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = False):
+def DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = False, ifSave = False):
     print(f'Quick stretches (L0={L0}, Cai={Cai})')
     text1=f'Quick stretches (L0={L0}, Cai={Cai})'
     if ifPlot:
@@ -681,15 +690,16 @@ def DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = False):
         fig1.suptitle(f'Quick stretches (L0={L0}, pCai={-np.log10(Cai)})')
         fig2.suptitle(f'States (L0={L0}, pCai={-np.log10(Cai)})')
     plt.show()
-    return Features_a
-    # return {'Fbase': Fbase_a,
-    #         'Fpeak': Fpeak_a,
-    #         'Fmin': Fmin_a,
-    #         'Fmintime': Fmintime_a,
-    #         'DFssrel': DFssrel_a
-    #         }
 
-def DoQuickStretches_passive(PSet, L0=1.9, ifPlot = False):
+    if ifSave:
+        import pickle
+        with open('Features_QuickStretches.dat', 'wb') as file_features:
+            pickle.dump([PSet, Features_a], file_features)
+
+    return Features_a
+
+
+def DoQuickStretches_passive(PSet, L0=1.9, ifPlot = False, ifSave=False):
     print(f'Passive Quick stretches (L0={L0})')
     text1=f'Passive Quick stretches (L0={L0})'
     if ifPlot:
@@ -789,6 +799,12 @@ def DoQuickStretches_passive(PSet, L0=1.9, ifPlot = False):
         fig1.suptitle(f'Quick stretches (L0={L0})')
         fig2.suptitle(f'States (L0={L0})')
     plt.show()
+
+    if ifSave:
+        import pickle
+        with open('Features_QuickStretches_passive.dat', 'wb') as file_features:
+            pickle.dump([PSet, Features_a], file_features)
+
     return Features_a
     # return {'Fbase': Fbase_a,
     #         'Fpeak': Fpeak_a,
@@ -799,14 +815,14 @@ def DoQuickStretches_passive(PSet, L0=1.9, ifPlot = False):
 
 
 
-def DoFpCa(PSet, Lambda0 = 1., ifPlot = False):
+def DoFpCa(PSet, Lambda0 = 1., ifPlot = False, ifSave=False):
     # import multiprocessing
     # def Do_one_Ca(iCai, Cai1, PSet1, F_array):
     #     Model = Land2017(PSet1)
     #     Model.Lamda_ext  = Lambda0
     #     Model.Cai = Cai1
     #     F_array[iCai] = Model.Ta(Model.Get_ss())
-        
+
     if ifPlot:
         figFpCa = plt.figure(num=f'F-pCa, Lambda0={Lambda0}', figsize=(7,7))
         ax_FpCa = figFpCa.add_subplot(2,1,1)
@@ -818,7 +834,7 @@ def DoFpCa(PSet, Lambda0 = 1., ifPlot = False):
     nH_a = [None]*len(PSet)
     EC50_a = [None]*len(PSet)
 
-    Cai_array = 10**np.linspace(-7, -4, 100)
+    Cai_array = 10**np.linspace(-7, -4, 30)
     for i1, PSet1 in enumerate(PSet):
         print(f'Doing FpCa (Lambda0={Lambda0})- PSet {i1}')
 
@@ -835,8 +851,8 @@ def DoFpCa(PSet, Lambda0 = 1., ifPlot = False):
         #     process_list.append(p)
         # for process in process_list:
         #     process.join()
-            
-        
+
+
 
         from scipy.optimize import curve_fit
         HillFn = lambda x, ymax, n, ca50 : ymax* x**n/(x**n + ca50**n)
@@ -844,7 +860,7 @@ def DoFpCa(PSet, Lambda0 = 1., ifPlot = False):
         HillParams, cov = curve_fit(HillFn, Cai_array, F_array,
                                     p0=[F_array[-1], 1,
                                         [ca for ica, ca in enumerate(Cai_array) if F_array[ica]>F_array[-1]/2][0] ])   #10**-7])
-        
+
         Fmax_a[i1] = HillParams[0]
         nH_a[i1] = HillParams[1]
         EC50_a[i1] = HillParams[2]
@@ -861,8 +877,15 @@ def DoFpCa(PSet, Lambda0 = 1., ifPlot = False):
         ax_Fmax.set_xlabel('Fmax')
         ax_nH.hist(nH_a, bins=bins, range=(0, max(nH_a)*1.1)); ax_nH.set_xlabel('nH')
         ax_EC50.hist(EC50_a, bins=bins, range=(0, max(EC50_a)*1.1)); ax_EC50.set_xlabel('EC50')
+        figFpCa.tight_layout()
 
-    return {'Fmax':Fmax_a, 'nH':nH_a, 'EC50':EC50_a}
+    Features_FpCa = {'Fmax':Fmax_a, 'nH':nH_a, 'EC50':EC50_a}
+    if ifSave:
+        import pickle
+        with open('Features_FpCa.dat', 'wb') as file_features:
+            pickle.dump([PSet, Features_FpCa], file_features)
+
+    return Features_FpCa
 
 
 def DoChirps(PSet, ifPlot = False):
@@ -962,17 +985,17 @@ if __name__ == '__main__':
 
     Model0 = Land2017()
 
-    Nsamples = 10  
+    Nsamples = 0
     print('Doing LH sampling')
-    PSet = MakeParamSetLH(Model0, Nsamples, 'kforce') # 'AllParams') #   'ku' )  #   'kuw' ) #   
+    PSet = MakeParamSetLH(Model0, Nsamples, 'kforce', 'Tref') # 'AllParams') #   'ku' )  #   'kuw' ) #
     print('LH sampling completed')
 
     # for iPSet, PSet1 in enumerate(PSet):  Land2017(PSet1).Get_ss()  # Test settling of steady state when ifkforce=True
 
-    Features_a = DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = True)
+    # Features_a = DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = True)
     # DoCaiStep(PSet, Cai1=10**-6, Cai2=10**-4, ifPlot=True)
     # DoQuickStretches_passive(PSet, L0=1.9, ifPlot = True)
-    # D = DoFpCa(PSet, Lambda0=1.0, ifPlot = True)
+    D = DoFpCa(PSet, Lambda0=1.0, ifPlot = True)
 
 
     # DoChirps(PSet, ifPlot = True)

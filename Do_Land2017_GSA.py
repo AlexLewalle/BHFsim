@@ -214,9 +214,13 @@ plt.style.use('seaborn')
 
 #%% FUNCTIONS
 
-def InitModels(NumSamples=100, WhichParams='AllParams'):
+def InitModels(NumSamples=100, *args):
+    if len(args)==0 | ('AllParams' in args):
+        WhichParams = 'AllParams'
+    else:
+        WhichParams = args
     print(f'Doing LH sampling --- {NumSamples} samples')
-    PSet = M.MakeParamSetLH(Model0, NumSamples,  WhichParams)
+    PSet = M.MakeParamSetLH(Model0, NumSamples,  *WhichParams)
     X = np.array([list(dict1.values()) for dict1 in PSet])
     print('LH sampling completed')
     return PSet, X
@@ -226,33 +230,36 @@ def DoAllExperiments(PSet, ifSave=True):
     for Feat1 in WhichFeatures:    FeatureData[Feat1] = [None]*len(PSet)
 
     print('Doing FpCa')
-    Features_FpCa = M.DoFpCa(PSet, Lambda0=1.0, ifPlot=True)
+    Features_FpCa = M.DoFpCa(PSet, Lambda0=1.0, ifPlot=True, ifSave=ifSave)
     FeatureData = {**FeatureData, **Features_FpCa}       # update Features dictionary with FpCa entries
 
     dLambda = 0.1
     print(f'/nDoing FpCa with a different SL={1+dLambda}')
-    Features_1 = M.DoFpCa(PSet, Lambda0=1+dLambda, ifPlot=True)
+    Features_1 = M.DoFpCa(PSet, Lambda0=1+dLambda, ifPlot=True, ifSave=ifSave)
     Features_FpCadiffSL = {'dFmaxdLambda': list((np.array(Features_1['Fmax'])-np.array(FeatureData['Fmax']))/dLambda),
                       'dEC50dLambda': list((np.array(Features_1['EC50'])-np.array(FeatureData['EC50']))/dLambda)}
     FeatureData = {**FeatureData, **Features_FpCadiffSL}       # update Features dictionary with FpCa entries
 
     print('Doing QuickStretches')
-    Features_QuickStretches = M.DoQuickStretches(PSet, ifPlot=True)
+    Features_QuickStretches = M.DoQuickStretches(PSet, ifPlot=True, ifSave=ifSave)
     FeatureData = {**FeatureData, **Features_QuickStretches}        # update Features dictionary with QuickStretch entries
 
     print('Doing passive QuickStretches')
-    Features_QuickStretchesPassive = M.DoQuickStretches_passive(PSet)
+    Features_QuickStretchesPassive = M.DoQuickStretches_passive(PSet, ifSave=ifSave)
     FeatureData = {**FeatureData, **Features_QuickStretchesPassive}        # update Features dictionary with QuickStretch entries
 
     print('Doing Cai steps')
-    Features_CaiStep = M.DoCaiStep(PSet, Cai1=10**-7, Cai2=10**-4, L0=1.9, ifPlot=True)
+    Features_CaiStep = M.DoCaiStep(PSet, Cai1=10**-7, Cai2=10**-4, L0=1.9, ifPlot=True, ifSave=ifSave)
     FeatureData = {**FeatureData, **Features_CaiStep}        # update Features dictionary with QuickStretch entries
 
     if ifSave:
         import pickle
         with open('Features_results.dat', 'wb') as file_features:
             pickle.dump([Features_FpCa, Features_FpCadiffSL, Features_QuickStretches, Features_QuickStretchesPassive, Features_CaiStep], file_features)
+
     return FeatureData
+
+
 
 def CreateEmulator(WhichFeature, X, FeatureData, ifLoad=True):
     # define experiment
@@ -273,7 +280,7 @@ def CreateEmulator(WhichFeature, X, FeatureData, ifLoad=True):
         n_restarts=3,
         metrics=metrics,
         seed=seed,  # reproducible training
-        learn_noise=True
+        learn_noise=False   # True  #   
     )
     device = "cpu"
 
@@ -288,7 +295,7 @@ def CreateEmulator(WhichFeature, X, FeatureData, ifLoad=True):
     return emulator
 
 
-def DoAllEmulators(WhichFeatures, X, FeatureData):
+def DoAllEmulators(WhichFeatures, PSet, FeatureData):
     Emulators = {}
     for iFeat, Feat1 in enumerate(WhichFeatures):
         Emulators[Feat1] = CreateEmulator(Feat1, X, FeatureData)
@@ -340,6 +347,7 @@ def DoGSA(WhichFeatures, X, FeatureData, Emulators=None, ifPlot=True):
     numcols = ceil(len(WhichFeatures)/numrows)
     figS1, axS1 = plt.subplots(numrows, numcols, figsize=([14,  9]), num='GSA') ; 
     if len(WhichFeatures)==1: axS1 = np.array([axS1])
+    axS1 = np.ravel(axS1)
     figSummary, axSummary = plt.subplots(num='Summary - Cumulative sensitivities')
     ParamSummary = np.array([0]*len(Model0.AllParams))
     
@@ -381,9 +389,13 @@ if __name__ == '__main__':
         [Features_FpCa, Features_FpCadiffSL, Features_QuickStretches, Features_QuickStretchesPassive, Features_CaiStep] = pickle.load(file_features)
     FeatureData = {**Features_FpCa, **Features_FpCadiffSL, **Features_QuickStretches, **Features_QuickStretchesPassive, **Features_CaiStep}
     
-    # Emulators = DoAllEmulators(WhichFeatures, X, FeatureData)
-    # GSA = DoAllGSA(WhichFeatures, X, FeatureData)
+    # Emulators = DoAllEmulators(WhichFeatures, PSet, FeatureData)
+    GSA = DoGSA(WhichFeatures, X, FeatureData)
     
     
-    DoGSA(['maxDF'], X, FeatureData)
+    # DoGSA(['Fmax'], X, FeatureData)
+    
+    # with open('Features_FpCa.dat', 'rb') as file_features:
+    #     [X, Features_FpCa] = pickle.load(file_features)
+    
     
