@@ -10,6 +10,9 @@ import lhsmdu
 lhsmdu.setRandomSeed(1)
 import seaborn as sns
 
+from os.path import expanduser
+home = expanduser('~')
+
 # def ode15s(f, Y0, t):
 #     S = ode(f)
 #     S.set_integrator('vode', method='bdf', order=15, nsteps=3000)
@@ -21,6 +24,7 @@ PSet = {}
 
 ifkforce = True
 
+#%% Model definition
 class Land2017:
 
     AllParams = ('a',
@@ -241,6 +245,7 @@ class Land2017:
         else:
             return Y_ss0
 
+    #%% ODE system
     def gwu(self, Y):
         CaTRPN, B, S, W, Zs, Zw, Lambda, Cd, BE, UE = Y
         return self.gw * abs(Zw)      # eq. 15
@@ -323,6 +328,7 @@ class Land2017:
 
         return (dCaTRPNdt, dBdt, dSdt, dWdt, dZsdt, dZwdt, dLambdadt, dCddt, dBEdt, dUEdt)
 
+    #%% Extract phenotypes
     def CaiStepResponse(self, Cai1, Cai2, t):
         """
         Starting from the steady state, change Cai from Cai1 to Cai2. Lambda is fixed at
@@ -387,7 +393,7 @@ class Land2017:
         F : Cai step response
         t : time
         """
-
+        
         return {'dFCaiStep': np.abs(F[-1]-F[0]),
                 'tCaiStep' : [t[i1] for i1, F1 in enumerate(F) if (F1-F[0])/(F[-1]-F[0])>0.5 ][0]
                 }
@@ -430,6 +436,12 @@ class Land2017:
                 #'Fmintime': t[jmin]  if jmin>jmax else None,
                 }
 
+    def GetTDFeatures(self, F, t, F0, deltat=0.04, n=5):
+        dt = t[1]-t[0]
+        delta = round(deltat/dt)
+        return {**{j   : F[0][j*delta]/F0[0] for j in np.arange(n) },
+                **{n+j : F[1][j*delta]/F0[1] for j in np.arange(n) }}
+        
 
     def GetQuickStretchPassiveFeatures(self, F, t, F0):
         exp_fun = lambda t, a, b, c : a*np.exp(-b*t) + c
@@ -450,7 +462,7 @@ class Land2017:
                 'tdec_pas1': 1/Fit1[1]}
 
 
-    def SinResponse(self, freq, numcycles=4, pointspercycle=30, dLambda_amplitude=0.1, ifPlot=False):
+    def SinResponse(self, freq, numcycles=10, pointspercycle=30, dLambda_amplitude=0.0001, ifPlot=False):
 
         self.dLambdadt_fun = lambda t : \
             dLambda_amplitude * np.cos(2*np.pi*freq*t) * 2*np.pi*freq
@@ -471,6 +483,10 @@ class Land2017:
 
         Stiffness = SinFit[0]/dLambda_amplitude
         DphaseTa = SinFit[1]*2*np.pi*freq
+        if DphaseTa < 0:
+            DphaseTa += 2*np.pi
+        elif DphaseTa > 2*np.pi:
+            DphaseTa -= 2*np.pi
 
         if ifPlot:
             fig_sol, ax_sol = plt.subplots(nrows=2)
@@ -535,7 +551,7 @@ def PlotS1(gsa, Feature):
     axS1[0].set_xticklabels(gsa.ylabels, rotation=45); axS1[0].set_title('S1')
     axS1[1].set_xticklabels(gsa.ylabels, rotation=45); axS1[0].set_title('Stotal')
 
-
+#%% Experiments
 def DoCaiStep(PSet, Cai1=10**-4, Cai2=10**-4, L0=1.9, ifPlot = False, ifSave = False):
     print(f'Stepping Cai={Cai1} to {Cai2} (L0={L0})')
     text1=f'Stepping Cai={Cai1} to {Cai2} (L0={L0})'
@@ -597,9 +613,9 @@ def DoCaiStep(PSet, Cai1=10**-4, Cai2=10**-4, L0=1.9, ifPlot = False, ifSave = F
 
 
 
-def DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = False, ifSave = False):
-    print(f'Quick stretches (L0={L0}, Cai={Cai})')
-    text1=f'Quick stretches (L0={L0}, Cai={Cai})'
+def DoQuickStretches(PSet, Cai=10**-4, L0=1.9, dLambda = .001, ifPlot = False, ifSave = False, ifTD=False):
+    text1=f'Quick stretches (L0={L0}, dLambda={dLambda}, Cai={Cai})'
+    print(text1)
     if ifPlot:
         fig1, ax1 = plt.subplots(nrows=4, ncols=2, num=f'Quick stretches (L0={L0}, pCai={-np.log10(Cai)})', figsize=(21, 7))
         fig2, ax2 = plt.subplots(nrows=9, ncols=2, num=f'Quick stretches - States (L0={L0}, pCai={-np.log10(Cai)})', figsize=(7,10))
@@ -612,7 +628,7 @@ def DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = False, ifSave = False):
         Model = Land2017(PSet1)
         Model.Cai = Cai
         Model.L0 = L0
-        dLambda = 0.05
+        
         t = np.linspace(0, 1, 1000)
         Ysol = [None]*2; F0 = [None]*2; F0_S = [None]*2; F0_W = [None]*2; F0_pas = [None]*2; F = [None]*2; F_S = [None]*2; F_W = [None]*2; F_pas = [None]*2
         for i1, dLambda1 in enumerate((dLambda, -dLambda)):
@@ -632,7 +648,10 @@ def DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = False, ifSave = False):
             F_pas[i1] = Model.F1(Ysol[i1]) + Model.F2(Ysol[i1])
 
 
-        features = Model.GetQuickStretchFeatures(F,t, F0)
+        if ifTD==False:
+            features = Model.GetQuickStretchFeatures(F,t, F0)
+        elif ifTD==True:
+            features = Model.GetTDFeatures(F,t, F0, deltat=0.04, n=15)
         for feat1 in features.keys():
             if not feat1 in Features_a:
                 Features_a[feat1] = [None]*len(PSet)
@@ -698,8 +717,15 @@ def DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = False, ifSave = False):
 
     return Features_a
 
+def DoMultiQS(PSet, Cai=10**-4.8, L0=[2.0], dLambda=[0.05]):
+    pass
+    # Features_a = {}
+    # for L01 in L0:
+    #     for dLam1 in dLambda:
+    #         Features_1 = DoQuickStretches(PSet,Cai,L01, dLam1, ifPlot=False, ifSave=False, ifTD=True)
+    #         Features_a[(L01, dLam1)] = 
 
-def DoQuickStretches_passive(PSet, L0=1.9, ifPlot = False, ifSave=False):
+def DoQuickStretches_passive(PSet, L0=1.9, dLambda=0.001, ifPlot = False, ifSave=False):
     print(f'Passive Quick stretches (L0={L0})')
     text1=f'Passive Quick stretches (L0={L0})'
     if ifPlot:
@@ -712,8 +738,7 @@ def DoQuickStretches_passive(PSet, L0=1.9, ifPlot = False, ifSave=False):
     for iPSet, PSet1 in enumerate(PSet):
         print(f'Doing passive quick stretches - PSet {iPSet}')
         Model = Land2017(PSet1)
-        Model.L0 = L0
-        dLambda = 0.05
+        Model.L0 = L0        
         t = np.linspace(0, 1, 1000)
         Ysol = [None]*2; F0 = [None]*2; F0_S = [None]*2; F0_W = [None]*2; F0_pas = [None]*2; F = [None]*2; F_S = [None]*2; F_W = [None]*2; F_pas = [None]*2
         for i1, dLambda1 in enumerate((dLambda, -dLambda)):
@@ -834,7 +859,7 @@ def DoFpCa(PSet, Lambda0 = 1., ifPlot = False, ifSave=False):
     nH_a = [None]*len(PSet)
     EC50_a = [None]*len(PSet)
 
-    Cai_array = 10**np.linspace(-7, -4, 30)
+    Cai_array = 10**np.linspace(-7, -4, 50)
     for i1, PSet1 in enumerate(PSet):
         print(f'Doing FpCa (Lambda0={Lambda0})- PSet {i1}')
 
@@ -852,12 +877,20 @@ def DoFpCa(PSet, Lambda0 = 1., ifPlot = False, ifSave=False):
         # for process in process_list:
         #     process.join()
 
+        if ifPlot:
+            ax_FpCa.semilogx(Cai_array, F_array)
+            ax_FpCa.set_xlabel('Cai (M)')
+            ax_FpCa.set_ylabel('F')
+            ax_FpCa.set_title(f'F-pCa, Lambda={Lambda0}, ifkforce={ifkforce}')
 
 
         from scipy.optimize import curve_fit
         HillFn = lambda x, ymax, n, ca50 : ymax* x**n/(x**n + ca50**n)
 
-        HillParams, cov = curve_fit(HillFn, Cai_array, F_array,
+        jNotNan = [j for j,y in enumerate(F_array) if y==y]
+        HillParams, cov = curve_fit(HillFn, 
+                                    [Cai_array[j] for j in jNotNan], 
+                                    [F_array[j] for j in jNotNan],
                                     p0=[F_array[-1], 1,
                                         [ca for ica, ca in enumerate(Cai_array) if F_array[ica]>F_array[-1]/2][0] ])   #10**-7])
 
@@ -865,11 +898,7 @@ def DoFpCa(PSet, Lambda0 = 1., ifPlot = False, ifSave=False):
         nH_a[i1] = HillParams[1]
         EC50_a[i1] = HillParams[2]
 
-        if ifPlot:
-            ax_FpCa.semilogx(Cai_array, F_array)
-            ax_FpCa.set_xlabel('Cai (M)')
-            ax_FpCa.set_ylabel('F')
-            ax_FpCa.set_title(f'F-pCa, Lambda={Lambda0}, ifkforce={ifkforce}')
+
 
     if ifPlot:
         bins = 10
@@ -940,7 +969,7 @@ def DoChirps(PSet, ifPlot = False):
     if ifPlot: axsol[1].plot(t, Ysol[:, 6])
 
 
-def DoDynamic(PSet, fmin=1, fmax=100, Numf=10, ifPlot = False):
+def DoDynamic(PSet, fmin=5, fmax=100, Numf=10, ifPlot = False):
 
     f_list = np.logspace(np.log10(fmin), np.log10(fmax), Numf)
 
@@ -957,7 +986,7 @@ def DoDynamic(PSet, fmin=1, fmax=100, Numf=10, ifPlot = False):
         for ifreq, freq in enumerate(f_list):
             print(f'   Doing PSet {i1},  f{ifreq} = {freq}')
 
-            Tasol, Ysol, t , Stiffness, DphaseTa = Model.SinResponse(freq, ifPlot=True)
+            Tasol, Ysol, t , Stiffness, DphaseTa = Model.SinResponse(freq, ifPlot=ifPlot)
 
             Stiffness_f[ifreq] = Stiffness
             DphaseTa_f[ifreq] = DphaseTa
@@ -979,15 +1008,15 @@ def DoDynamic(PSet, fmin=1, fmax=100, Numf=10, ifPlot = False):
 
 
 
-
+#%% Main
 
 if __name__ == '__main__':
 
     Model0 = Land2017()
 
-    Nsamples = 0
+    Nsamples = 10
     print('Doing LH sampling')
-    PSet = MakeParamSetLH(Model0, Nsamples, 'kforce', 'Tref') # 'AllParams') #   'ku' )  #   'kuw' ) #
+    PSet = MakeParamSetLH(Model0, Nsamples, 'AllParams') #   'ku' )  #   'kuw' ) #
     print('LH sampling completed')
 
     # for iPSet, PSet1 in enumerate(PSet):  Land2017(PSet1).Get_ss()  # Test settling of steady state when ifkforce=True
@@ -995,10 +1024,10 @@ if __name__ == '__main__':
     # Features_a = DoQuickStretches(PSet, Cai=10**-4, L0=1.9, ifPlot = True)
     # DoCaiStep(PSet, Cai1=10**-6, Cai2=10**-4, ifPlot=True)
     # DoQuickStretches_passive(PSet, L0=1.9, ifPlot = True)
-    D = DoFpCa(PSet, Lambda0=1.0, ifPlot = True)
+    # D = DoFpCa(PSet, Lambda0=1.0, ifPlot = True)
 
 
     # DoChirps(PSet, ifPlot = True)
-    # DoDynamic(PSet, fmin=1, fmax=100, Numf=10, ifPlot = True)
+    DoDynamic(PSet, fmin=0.2, fmax=100, Numf=50, ifPlot =False)
 
     plt.show()

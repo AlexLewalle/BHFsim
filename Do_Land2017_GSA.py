@@ -36,6 +36,8 @@ from GPErks.train.emulator import GPEmulator
 
 import pickle
 
+from os.path import expanduser
+home = expanduser('~')
 
 # FeatureData = {}
  
@@ -216,7 +218,7 @@ plt.style.use('seaborn')
 
 def InitModels(NumSamples=100, *args):
     if len(args)==0 | ('AllParams' in args):
-        WhichParams = 'AllParams'
+        WhichParams = ['AllParams']
     else:
         WhichParams = args
     print(f'Doing LH sampling --- {NumSamples} samples')
@@ -249,54 +251,103 @@ def DoAllExperiments(PSet, ifSave=True):
     FeatureData = {**FeatureData, **Features_QuickStretchesPassive}        # update Features dictionary with QuickStretch entries
 
     print('Doing Cai steps')
-    Features_CaiStep = M.DoCaiStep(PSet, Cai1=10**-7, Cai2=10**-4, L0=1.9, ifPlot=True, ifSave=ifSave)
+    Features_CaiStep = M.DoCaiStep(PSet, Cai1=10**-6.5, Cai2=10**-4, L0=1.9, ifPlot=True, ifSave=ifSave)
     FeatureData = {**FeatureData, **Features_CaiStep}        # update Features dictionary with QuickStretch entries
 
     if ifSave:
         import pickle
-        with open('Features_results.dat', 'wb') as file_features:
-            pickle.dump([Features_FpCa, Features_FpCadiffSL, Features_QuickStretches, Features_QuickStretchesPassive, Features_CaiStep], file_features)
+        with open(f'{home}/Dropbox/Python/BHFsim/Features_results.dat', 'wb') as file_features:
+            pickle.dump([PSet, Features_FpCa, Features_FpCadiffSL, Features_QuickStretches, Features_QuickStretchesPassive, Features_CaiStep], file_features)
 
     return FeatureData
 
 
 
-def CreateEmulator(WhichFeature, X, FeatureData, ifLoad=True):
+def CreateEmulator(WhichFeature, X, FeatureData, ifLoad=False):
     # define experiment
     print(f'Emulating   {WhichFeature}')
     dataset = Dataset(X_train=X,
                       y_train= FeatureData[WhichFeature],
                       l_bounds=[Model0.ParRange[param1][0] for param1 in Model0.AllParams],
                       u_bounds=[Model0.ParRange[param1][1] for param1 in Model0.AllParams])
-    likelihood = GaussianLikelihood()
-    mean_function = LinearMean(input_size=dataset.input_size)
-    kernel = ScaleKernel(RBFKernel(ard_num_dims=dataset.input_size))
-    metrics = [MeanSquaredError(), R2Score()]
-    experiment = GPExperiment(
-        dataset,
-        likelihood,
-        mean_function,
-        kernel,
-        n_restarts=3,
-        metrics=metrics,
-        seed=seed,  # reproducible training
-        learn_noise=False   # True  #   
-    )
+    
     device = "cpu"
 
-    emulator = GPEmulator(experiment, device)
+    config_file = f'{home}/Dropbox/Python/BHFsim/saved_emulators/emulator_config_{WhichFeature}.ini'
+    if not ifLoad:
+        likelihood = GaussianLikelihood()
+        mean_function = LinearMean(input_size=dataset.input_size)
+        kernel = ScaleKernel(RBFKernel(ard_num_dims=dataset.input_size))
+        metrics = [MeanSquaredError(), R2Score()]
+        experiment = GPExperiment(
+            dataset,
+            likelihood,
+            mean_function,
+            kernel,
+            n_restarts=3,
+            metrics=metrics,
+            seed=seed,  # reproducible training
+            learn_noise=False   # True  #   
+        )
+        experiment.save_to_config_file(config_file)
 
-    optimizer = torch.optim.Adam(experiment.model.parameters(), lr=0.1)
-    # esc = GLEarlyStoppingCriterion(max_epochs=1000, alpha=0.1, patience=8)
+        emulator = GPEmulator(experiment, device)
+    
+        from GPErks.train.snapshot import NeverSaveSnapshottingCriterion
+        snapshot_dir = f'{home}/Dropbox/Python/BHFsim/saved_emulators/emulator_{WhichFeature}'
+        train_restart_template = "restart_{restart}"
+        train_epoch_template = "epoch_{epoch}.pth"
+        snapshot_file = train_epoch_template
+        snpc = NeverSaveSnapshottingCriterion( f'{snapshot_dir}/{train_restart_template}', snapshot_file)
+    
+        optimizer = torch.optim.Adam(experiment.model.parameters(), lr=0.1)
+        # esc = GLEarlyStoppingCriterion(max_epochs=1000, alpha=0.1, patience=8)
+    
+        print(f'Training emulator for {WhichFeature}')
+        best_model, best_train_stats = emulator.train(optimizer, snapshotting_criterion=snpc)
+        print(f'   Emulator training completed and saved for {WhichFeature}')
+        
+    else:
+        from GPErks.gp.experiment import load_experiment_from_config_file
+        # Load skeleton
+        experiment = load_experiment_from_config_file(
+            config_file,
+            dataset  # notice that we still need to provide the dataset used!
+        )
+        
+        best_model_file = f'{home}/Dropbox/Python/BHFsim/saved_emulators/emulator_{WhichFeature}/best_model.pth'
+        best_model_state = torch.load(best_model_file, map_location=torch.device(device))
 
-    print(f'Training emulator for {WhichFeature}')
-    best_model, best_train_stats = emulator.train(optimizer) ;   print(f'   Emulator training completed for {WhichFeature}')
+        emulator = GPEmulator(experiment, device)
+        emulator.model.load_state_dict(best_model_state)
+        print(f'   Emulator loaded for {WhichFeature}')
+
+
+
+
 
     return emulator
 
+def LoadEmulator(WhichFeature, dataset):
+    print(f'Loadiong emulator for {WhichFeature}')
+    device = 'cpu'
+    
+    config_file = f'saved_emulators/emulator_config_{WhichFeature}.ini'
+    from GPErks.gp.experiment import load_experiment_from_config_file
+    experiment = load_experiment_from_config_file(config_file, dataset)
+    
+    snapshot_dir = f'saved_emulators/emulator_{WhichFeature}'
+    best_model_file = f'{snapshot_dir}/best_model.pth'
+    best_model_state = torch.load(best_model_file, map_location=torch.device(device))
+    emulator1 = GPEmulator(experiment, device)
+    emulator1.model.load_state_dict(best_model_state)
+    return emulator1
+    
 
 def DoAllEmulators(WhichFeatures, PSet, FeatureData):
     Emulators = {}
+    if WhichFeatures=='AllFeatures':
+        WhichFeatures = AllFeatures
     for iFeat, Feat1 in enumerate(WhichFeatures):
         Emulators[Feat1] = CreateEmulator(Feat1, X, FeatureData)
 
@@ -340,9 +391,7 @@ def DoPCA(FeatureData):
 def DoGSA(WhichFeatures, X, FeatureData, Emulators=None, ifPlot=True):
     GSA = {}
     if Emulators == None:
-        Emulators = {}
-        for Feat1 in WhichFeatures:
-            Emulators = {**Emulators, **{Feat1: None} }
+        Emulators = {Feat1: None for Feat1 in WhichFeatures}
     numrows = floor(np.sqrt(len(WhichFeatures)))
     numcols = ceil(len(WhichFeatures)/numrows)
     figS1, axS1 = plt.subplots(numrows, numcols, figsize=([14,  9]), num='GSA') ; 
@@ -386,14 +435,18 @@ if __name__ == '__main__':
     
     # FeatureData = DoAllExperiments(PSet, ifSave=True)
     with open('Features_results.dat', 'rb') as file_features:
-        [Features_FpCa, Features_FpCadiffSL, Features_QuickStretches, Features_QuickStretchesPassive, Features_CaiStep] = pickle.load(file_features)
+        [PSet, Features_FpCa, Features_FpCadiffSL, Features_QuickStretches, Features_QuickStretchesPassive, Features_CaiStep] = pickle.load(file_features)
     FeatureData = {**Features_FpCa, **Features_FpCadiffSL, **Features_QuickStretches, **Features_QuickStretchesPassive, **Features_CaiStep}
     
+    
     # Emulators = DoAllEmulators(WhichFeatures, PSet, FeatureData)
-    GSA = DoGSA(WhichFeatures, X, FeatureData)
+    # GSA = DoGSA(['Fmax', 'nH'], X, FeatureData)
+    
+    # FeatureData = M.DoQuickStretches(PSet)
+    # GSA = DoGSA(list(range(10)), X, FeatureData, ifPlot=False)
     
     
-    # DoGSA(['Fmax'], X, FeatureData)
+    DoGSA(AllFeatures, X, FeatureData)
     
     # with open('Features_FpCa.dat', 'rb') as file_features:
     #     [X, Features_FpCa] = pickle.load(file_features)

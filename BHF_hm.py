@@ -34,7 +34,8 @@ if __name__ == "__main__":
 
     PSetExp = M.MakeParamSetLH(Model0, numsamples=0);
     PSetExp[0]['Tref'] = 1.9
-    pCaExp = M.DoFpCa(PSetExp, ifPlot=True, ifSave=False)
+    pCaExp = M.DoFpCa(PSetExp, ifPlot=False, ifSave=False, ifTD=True)
+    QSExp = M.DoQuickStretches(PSetExp, ifPlot=False, ifSave=False)
     exp_mean = np.array([pCaExp['Fmax'][0], # 20.e3,         # Fmax
                          pCaExp['nH'][0], #3.5,            # nH
                          pCaExp['EC50'][0] ] ) #1.8e-6])       # EC50
